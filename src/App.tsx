@@ -1,28 +1,38 @@
+import React from 'react';
 import { useState, useMemo, useEffect } from 'react';
 import { saveAs } from 'file-saver';
 
 interface FileData {
   headers: string[];
-  rows: any[];
+  rows: Card[];  // 使用之前定义的 Card 接口
 }
 
 interface GroupedCards {
   [pillar: string]: {
-    [category: string]: any[];
+    [category: string]: Card[];  // 使用 Card 接口
   };
 }
 
-interface CardWithWeight extends Record<string, any> {
-  weightage?: number;
+interface CardWithWeight extends Card {
+  weightage?: string;
 }
 
-// 修改权重计算相关的常量
-const WEIGHT_BUCKETS = {
-  'Targeting': 20,
-  'Budget & Bidding': 20,  // 修改为 Budget & Bidding
-  'Audience': 20,
-  'Ads': 20,
-  'Measurement': 20
+// 需要定义接口来约束对象的类型
+interface WeightBuckets {
+  [key: string]: number;
+  Targeting: number;
+  'Budget & Bidding': number;
+  Audience: number;
+  Ads: number;
+  Measurement: number;
+}
+
+const WEIGHT_BUCKETS: WeightBuckets = {
+  Targeting: 20,
+  'Budget & Bidding': 20,
+  Audience: 20,
+  Ads: 20,
+  Measurement: 20
 };
 
 // 添加一个计算颜色深度的函数
@@ -56,18 +66,67 @@ interface ToastState {
   visible: boolean;
 }
 
+// 添加 styles 对象的类型定义
+interface CategoryStyles {
+  backgroundColor: string;
+  borderColor: string;
+  color: string;
+}
+
+interface StylesMap {
+  [key: string]: CategoryStyles;  // 添加动态索引签名
+  'Health check': CategoryStyles;
+  'Feature adoption': CategoryStyles;
+  'Account free': CategoryStyles;
+  'Campaign limited': CategoryStyles;
+  'Tactic 1': CategoryStyles;
+  'Tactic 2': CategoryStyles;
+  'Tactic 3': CategoryStyles;
+  'Other': CategoryStyles;
+}
+
+// 添加排序顺序的类型定义
+interface CategoryOrder {
+  [key: string]: number;
+  'Health check': number;
+  'Feature adoption': number;
+  'Tactic': number;
+}
+
+// 添加 Filter 选项的类型定义
+interface FilterOptions {
+  ucmStatus: string[];
+  webUIStatus: string[];
+}
+
+// 添加 Card 类型定义
+interface Card {
+  Item: string;
+  Pillar: string;
+  Category: string;
+  Campaign: string;
+  'UCM status': string;
+  'WebUI status': string;
+  'UCM DMS Weightage': string;
+  'DMS status': string;
+  'UCM DMS': string;  // 添加这个字段
+  'Tactic code': string;  // 添加这个字段
+  'Campaign creation'?: string;
+  'Existing campaign'?: string;
+  'Notes'?: string;
+  weightage?: string;
+  [key: string]: string | undefined;  // 添加索引签名
+}
+
 // 修改 Category 颜色映射函数
 const getCategoryStyle = (category: string) => {
-  const styles = {
-    // Health check 相关的标签 - 红色系
+  const styles: StylesMap = {
     'Health check': {
       backgroundColor: '#fff1f0',
       borderColor: '#ffa39e',
       color: '#cf1322'
     },
-    
-    // Feature Adoption 相关的标签 - 黄色系
-    'Feature adoption': {  // 修改这里的键名
+    'Feature adoption': {
       backgroundColor: '#fffbe6',
       borderColor: '#ffe58f',
       color: '#d46b08'
@@ -82,8 +141,6 @@ const getCategoryStyle = (category: string) => {
       borderColor: '#ffd591',
       color: '#d48806'
     },
-    
-    // Tactic 相关的标签 - 绿色系
     'Tactic 1': {
       backgroundColor: '#f6ffed',
       borderColor: '#b7eb8f',
@@ -99,14 +156,12 @@ const getCategoryStyle = (category: string) => {
       borderColor: '#91d5ff',
       color: '#096dd9'
     },
-    
-    // 默认样式
     'Other': {
       backgroundColor: '#f5f5f5',
       borderColor: '#d9d9d9',
       color: '#595959'
     }
-  };
+  } as const;
 
   // 判断是否是 Tactic 类型
   if (category.toLowerCase().includes('tactic')) {
@@ -121,6 +176,40 @@ const getCategoryStyle = (category: string) => {
 
   return styles[category] || styles['Other'];
 };
+
+// 添加 JSX 相关的类型声明
+declare namespace JSX {
+  interface IntrinsicElements {
+    div: React.DetailedHTMLProps<React.HTMLAttributes<HTMLDivElement>, HTMLDivElement>;
+    span: React.DetailedHTMLProps<React.HTMLAttributes<HTMLSpanElement>, HTMLSpanElement>;
+    h1: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h3: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h4: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    h5: React.DetailedHTMLProps<React.HTMLAttributes<HTMLHeadingElement>, HTMLHeadingElement>;
+    button: React.DetailedHTMLProps<React.ButtonHTMLAttributes<HTMLButtonElement>, HTMLButtonElement>;
+    input: React.DetailedHTMLProps<React.InputHTMLAttributes<HTMLInputElement>, HTMLInputElement>;
+    label: React.DetailedHTMLProps<React.LabelHTMLAttributes<HTMLLabelElement>, HTMLLabelElement>;
+    select: React.DetailedHTMLProps<React.SelectHTMLAttributes<HTMLSelectElement>, HTMLSelectElement>;
+    option: React.DetailedHTMLProps<React.OptionHTMLAttributes<HTMLOptionElement>, HTMLOptionElement>;
+    strong: React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement>;
+    style: React.DetailedHTMLProps<React.StyleHTMLAttributes<HTMLStyleElement>, HTMLStyleElement>;
+  }
+}
+
+// 添加事件处理函数的类型
+interface DragEvent<T = Element> extends React.MouseEvent<T> {
+  dataTransfer: DataTransfer;
+}
+
+// 添加权重计算相关的接口
+interface UsedWeights {
+  [key: string]: number;
+  Targeting: number;
+  'Budget & Bidding': number;
+  Audience: number;
+  Ads: number;
+  Measurement: number;
+}
 
 function App() {
   const [fileData, setFileData] = useState<FileData | null>(null);
@@ -258,7 +347,7 @@ function App() {
 
   // 计算已使用的权重
   const calculateUsedWeights = useMemo(() => {
-    const usedWeights = {
+    const usedWeights: UsedWeights = {
       'Targeting': 0,
       'Budget & Bidding': 0,
       'Audience': 0,
@@ -267,8 +356,8 @@ function App() {
     };
 
     selectedCards.forEach(card => {
-      if (card.weightage && card.Pillar) {
-        usedWeights[card.Pillar] += parseFloat(card.weightage);
+      if (card.weightage && card.Pillar && card.Pillar in usedWeights) {
+        usedWeights[card.Pillar as keyof UsedWeights] += parseFloat(card.weightage);
       }
     });
 
@@ -278,17 +367,24 @@ function App() {
   // 计算可用的权重
   const availableWeights = useMemo(() => {
     const available = { ...WEIGHT_BUCKETS };
-    Object.keys(available).forEach(key => {
+    (Object.keys(available) as Array<keyof WeightBuckets>).forEach(key => {
       const used = calculateUsedWeights[key];
-      // 确保可用权重不会小于 0
       available[key] = Math.max(0, available[key] - used);
     });
     return available;
   }, [calculateUsedWeights]);
 
   // 添加一个计算 Category 权重的函数
+  interface CategoryWeight {
+    [category: string]: string;
+  }
+
+  interface PillarCategoryWeights {
+    [pillar: string]: CategoryWeight;
+  }
+
   const calculateCategoryWeights = useMemo(() => {
-    const categoryWeights: Record<string, Record<string, number>> = {};
+    const categoryWeights: PillarCategoryWeights = {};
     
     selectedCards.forEach(card => {
       if (card.weightage && card.Pillar) {
@@ -299,10 +395,11 @@ function App() {
           categoryWeights[pillar] = {};
         }
         if (!categoryWeights[pillar][category]) {
-          categoryWeights[pillar][category] = 0;
+          categoryWeights[pillar][category] = '0';
         }
         
-        categoryWeights[pillar][category] += parseFloat(card.weightage);
+        const currentWeight = parseFloat(categoryWeights[pillar][category]);
+        categoryWeights[pillar][category] = (currentWeight + parseFloat(card.weightage)).toString();
       }
     });
     
@@ -320,13 +417,12 @@ function App() {
         'Notes', 'WebUI Weightage'
       ];
 
-      // 修改这里：正确处理包含引号、逗号的字段
-      const escapeField = (field: string) => {
-        if (field.includes('"') || field.includes(',')) {
-          // 将字段中的双引号替换为两个双引号，并用双引号包裹整个字段
-          return `"${field.replace(/"/g, '""')}"`;
+      const escapeField = (value: string | undefined): string => {
+        if (value === undefined) return '';
+        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+          return `"${value.replace(/"/g, '""')}"`;
         }
-        return field;
+        return value;
       };
 
       const rows = selectedCards.map(card => {
@@ -334,15 +430,12 @@ function App() {
           if (header === 'WebUI Weightage') {
             return card.weightage ? `${card.weightage}%` : '';
           }
-          // 使用 escapeField 函数处理每个字段
           return escapeField(card[header] || '');
         }).join(',');
       });
 
       return [headers.join(','), ...rows].join('\n');
     };
-
-    const csvContent = generateCSV();
 
     // 创建遮罩层
     const overlay = document.createElement('div');
@@ -354,7 +447,7 @@ function App() {
     overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     overlay.style.zIndex = '1000';
 
-    // 创建一个容器来包含输入框和按钮
+    // 创建对话框容器
     const container = document.createElement('div');
     container.style.position = 'fixed';
     container.style.left = '50%';
@@ -364,10 +457,10 @@ function App() {
     container.style.padding = '20px';
     container.style.borderRadius = '8px';
     container.style.zIndex = '1001';
+    container.style.minWidth = '300px';
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     container.style.gap = '15px';
-    container.style.minWidth = '300px';
 
     // 添加标题
     const title = document.createElement('h3');
@@ -376,22 +469,22 @@ function App() {
     container.appendChild(title);
 
     // 创建文件名输入框
-    const fileNameInput = document.createElement('input');
-    fileNameInput.type = 'text';
-    fileNameInput.value = 'new.csv';
-    fileNameInput.style.padding = '8px';
-    fileNameInput.style.border = '1px solid #ccc';
-    fileNameInput.style.borderRadius = '4px';
-    fileNameInput.style.width = '100%';
-    container.appendChild(fileNameInput);
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = 'new.csv';
+    input.style.padding = '8px';
+    input.style.border = '1px solid #ccc';
+    input.style.borderRadius = '4px';
+    input.style.width = '100%';
+    container.appendChild(input);
 
-    // 添加按钮容器
+    // 创建按钮容器
     const buttonContainer = document.createElement('div');
     buttonContainer.style.display = 'flex';
     buttonContainer.style.justifyContent = 'flex-end';
     buttonContainer.style.gap = '10px';
 
-    // 添加取消按钮
+    // 取消按钮
     const cancelButton = document.createElement('button');
     cancelButton.textContent = 'Cancel';
     cancelButton.style.padding = '6px 12px';
@@ -403,7 +496,7 @@ function App() {
       document.body.removeChild(container);
     };
 
-    // 添加保存按钮
+    // 保存按钮
     const saveButton = document.createElement('button');
     saveButton.textContent = 'Save';
     saveButton.style.padding = '6px 12px';
@@ -413,46 +506,13 @@ function App() {
     saveButton.style.borderRadius = '4px';
     saveButton.style.cursor = 'pointer';
     saveButton.onclick = () => {
-      const fileName = fileNameInput.value || 'new.csv';
-      
-      try {
-        // 创建 CSV 内容的 data URI
-        const csvData = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const csvUrl = URL.createObjectURL(csvData);
-        
-        // 创建一个隐藏的 iframe 来处理下载
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        
-        // 在 iframe 中写入下载链接
-        iframe.contentDocument.write(`
-          <a id="downloadLink" 
-             href="${csvUrl}" 
-             download="${fileName}"
-             style="display:none">Download</a>
-          <script>
-            document.getElementById('downloadLink').click();
-            window.parent.postMessage('download-complete', '*');
-          </script>
-        `);
-        
-        // 监听下载完成消息
-        window.addEventListener('message', function handler(event) {
-          if (event.data === 'download-complete') {
-            // 清理
-            document.body.removeChild(iframe);
-            URL.revokeObjectURL(csvUrl);
-            document.body.removeChild(overlay);
-            document.body.removeChild(container);
-            showToast('File download started');
-            window.removeEventListener('message', handler);
-          }
-        });
-      } catch (error) {
-        console.error('Error during file download:', error);
-        showToast('Failed to download file. Please try again.');
-      }
+      const fileName = input.value || 'new.csv';
+      const csvContent = generateCSV();
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      saveAs(blob, fileName);
+      document.body.removeChild(overlay);
+      document.body.removeChild(container);
+      showToast('File downloaded successfully');
     };
 
     buttonContainer.appendChild(cancelButton);
@@ -461,8 +521,8 @@ function App() {
 
     document.body.appendChild(overlay);
     document.body.appendChild(container);
-    fileNameInput.focus();
-    fileNameInput.select();
+    input.focus();
+    input.select();
   };
 
   // 在组件加载时获取基础卡片列表
@@ -498,8 +558,8 @@ function App() {
   }, []);
 
   // 修改文件上传处理函数
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (file && baseCardList) {  // 确保基础卡片列表已加载
       setOriginalFileName(file.name);
       
@@ -572,7 +632,7 @@ function App() {
   };
 
   // 修改卡片渲染部分
-  const renderCard = (card: any) => (
+  const renderCard = (card: Card) => (
     <div style={{
       padding: '12px',
       border: '1px solid #ccc',
@@ -663,32 +723,11 @@ function App() {
     </div>
   );
 
-  // 更新 Filter 选项的获取逻辑
-  const getFilterOptions = useMemo(() => {
-    if (!fileData) return {
-      ucmStatus: ['All'],
-      webUIStatus: ['All']
-    };
-
-    const ucmStatusSet = new Set<string>();
-    const webUIStatusSet = new Set<string>();
-
-    fileData.rows.forEach(row => {
-      // 只收集当前选中的 Pillar 和 Category 下的选项
-      const matchPillar = !selectedPillar || (row.Pillar || 'Other') === selectedPillar;
-      const matchCategory = !selectedCategory || (row.Category || 'Other') === selectedCategory;
-
-      if (matchPillar && matchCategory) {
-        if (row['UCM status']) ucmStatusSet.add(row['UCM status']);
-        if (row['WebUI status']) webUIStatusSet.add(row['WebUI status']);
-      }
-    });
-
-    return {
-      ucmStatus: ['All', ...Array.from(ucmStatusSet).sort()],
-      webUIStatus: ['All', ...Array.from(webUIStatusSet).sort()]
-    };
-  }, [fileData, selectedPillar, selectedCategory]);
+  // 修改 Filter 选项的类型和实现
+  const getFilterOptions: FilterOptions = {
+    ucmStatus: ucmStatusOptions,
+    webUIStatus: webUIStatusOptions
+  };
 
   // 添加显示 toast 的函数
   const showToast = (message: string) => {
@@ -759,6 +798,13 @@ function App() {
 
       return matchPillar && matchCategory && matchUCMStatus && matchWebUIStatus && matchCampaign;
     }).length;
+  };
+
+  // 修改排序顺序的类型
+  const order: CategoryOrder = {
+    'Health check': 1,
+    'Feature adoption': 2,
+    'Tactic': 3
   };
 
   return (
@@ -989,7 +1035,9 @@ function App() {
                   </label>
                   <select
                     value={selectedWebUIStatus}
-                    onChange={(e) => setSelectedWebUIStatus(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
+                      setSelectedWebUIStatus(e.target.value);
+                    }}
                     style={{
                       width: '100%',
                       padding: '6px',
@@ -1057,11 +1105,11 @@ function App() {
                     <div
                       key={`${card['Item']}-${card['UCM DMS Weightage']}`}
                       draggable
-                      onDragStart={(e) => {
+                      onDragStart={(e: DragEvent<HTMLDivElement>) => {
                         e.dataTransfer.setData('text/plain', JSON.stringify(card));
                       }}
                     >
-                      {renderCard(card)}
+                      {renderCard(card as Card)}
                     </div>
                   ))}
               </div>
@@ -1105,19 +1153,19 @@ function App() {
                     <div style={{
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: '8px'
+                      gap: '12px'
                     }}>
                       {Object.entries(availableWeights).map(([bucket, weight]) => (
                         <div key={bucket} style={{
                           display: 'flex',
                           justifyContent: 'space-between',
                           fontSize: '13px',
-                          padding: '3px 8px',
+                          padding: '6px 12px',
                           backgroundColor: 'white',
                           borderRadius: '4px',
-                          height: '28px',
                           alignItems: 'center',
-                          border: '1px solid transparent'
+                          border: '1px solid #e0e0e0',
+                          height: '26px'  // 改为 26px，与右侧完全一致
                         }}>
                           <span>{bucket}</span>
                           <span>{weight.toFixed(2)}%</span>
@@ -1152,16 +1200,18 @@ function App() {
                           }}>
                             {/* Pillar 总权重 */}
                             <div style={{
-                              width: '200px',  // 增加宽度
+                              width: '200px',
                               display: 'flex',
                               justifyContent: 'space-between',
                               fontSize: '13px',
-                              padding: '6px 12px',  // 增加内边距
+                              padding: '6px 12px',
                               backgroundColor: getBackgroundColor(weight, totalWeight),
                               borderRadius: '4px',
                               border: `1px solid ${getBorderColor(weight, totalWeight)}`,
                               fontWeight: 'bold',
-                              flexShrink: 0
+                              flexShrink: 0,
+                              height: '26px',
+                              alignItems: 'center'  // 添加垂直居中对齐
                             }}>
                               <span>{pillar}</span>
                               <span>{weight.toFixed(2)}%</span>
@@ -1177,13 +1227,6 @@ function App() {
                               {Object.entries(categories)
                                 // 对 categories 进行排序，确保特定顺序
                                 .sort(([a], [b]) => {
-                                  // 定义排序优先级
-                                  const order = {
-                                    'Health check': 1,
-                                    'Feature adoption': 2,
-                                    'Tactic': 3
-                                  };
-                                  
                                   // 获取 category 的基本类型（去除数字等）
                                   const getBaseCategory = (cat: string) => {
                                     if (cat.toLowerCase().includes('health check')) return 'Health check';
@@ -1213,10 +1256,12 @@ function App() {
                                     backgroundColor: 'white',
                                     border: '1px solid #e0e0e0',
                                     borderRadius: '4px',
-                                    minWidth: '140px'
+                                    minWidth: '140px',
+                                    height: '26px',
+                                    alignItems: 'center'  // 添加垂直居中对齐
                                   }}>
                                     <span>{category}</span>
-                                    <span style={{ marginLeft: '12px' }}>{categoryWeight.toFixed(2)}%</span>
+                                    <span style={{ marginLeft: '12px' }}>{parseFloat(categoryWeight).toFixed(2)}%</span>
                                   </div>
                                 ))}
                             </div>
@@ -1402,8 +1447,12 @@ function App() {
                                     justifyContent: 'center',
                                     transition: 'color 0.2s'
                                   }}
-                                  onMouseOver={(e) => e.currentTarget.style.color = '#ff4444'}
-                                  onMouseOut={(e) => e.currentTarget.style.color = '#666'}
+                                  onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => 
+                                    e.currentTarget.style.color = '#ff4444'
+                                  }
+                                  onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => 
+                                    e.currentTarget.style.color = '#666'
+                                  }
                                 >
                                   ×
                                 </button>
@@ -1430,7 +1479,7 @@ function App() {
                                     type="text"
                                     value={card.weightage || ''}
                                     onChange={(e) => {
-                                      const value = e.target.value.replace(/\D/g, '');
+                                      const value = e.target.value.replace(/\D/g, '');  // 只允许数字
                                       const numericValue = parseInt(value, 10);
                                       
                                       if (!value) {
@@ -1479,7 +1528,7 @@ function App() {
                                             c['Campaign'] === card['Campaign'] &&
                                             c['UCM status'] === card['UCM status'] &&
                                             c['WebUI status'] === card['WebUI status']
-                                              ? { ...c, weightage: newValue }
+                                              ? { ...c, weightage: newValue.toString() }
                                               : c
                                           )
                                         );
