@@ -1,6 +1,8 @@
 import React from 'react';
 import { useState, useMemo, useEffect } from 'react';
 import { saveAs } from 'file-saver';
+import { Link } from 'react-router-dom';
+import { exportToCSV } from './utils/csvExporter';
 
 interface FileData {
   headers: string[];
@@ -223,6 +225,31 @@ function App() {
   const [originalFileName, setOriginalFileName] = useState<string>('');
   const [toast, setToast] = useState<ToastState>({ message: '', visible: false });
   const [baseCardList, setBaseCardList] = useState<FileData | null>(null);
+  const [selectedOwnerGPMs, setSelectedOwnerGPMs] = useState<string[]>([]);
+  const [selectedUCMDMS, setSelectedUCMDMS] = useState<string>('Yes');
+  const [selectedCampaignLevel, setSelectedCampaignLevel] = useState<string>('Yes');
+
+  // 添加 Can apply to new/existing campaign 状态
+  const [applyToState, setApplyToState] = useState({
+    New: 'All',
+    Existing: 'All'
+  } as { [key: string]: string });
+
+  // 添加 Can apply to campaign type 状态
+  const [applyCampaignTypeState, setApplyCampaignTypeState] = useState({
+    Search: 'All',
+    Pmax: 'All',
+    Shopping: 'All',
+    DNV: 'All'
+  } as { [key: string]: string });
+
+  // 添加 Already apply to campaign type 状态
+  const [alreadyApplyTypeState, setAlreadyApplyTypeState] = useState({
+    Search: 'All',
+    Pmax: 'All',
+    Shopping: 'All',
+    DNV: 'All'
+  } as { [key: string]: string });
 
   // 获取所有唯一的 Campaign 值，包含 "-" 值
   const campaignOptions = useMemo(() => {
@@ -294,6 +321,20 @@ function App() {
     return ['All', ...Array.from(statusSet).sort()];
   }, [fileData]);
 
+  // 获取所有 Owner GPM 选项，确保返回的是 string[] 类型
+  const ownerGPMOptions = useMemo(() => {
+    if (!fileData?.rows) return [];
+    const owners = fileData.rows
+      .map(row => row['Owner GPM'])
+      .filter((owner): owner is string => typeof owner === 'string' && owner !== '');
+    return Array.from(new Set(owners));
+  }, [fileData]);
+
+  // 判断是否选中（空数组表示全选）
+  const isOwnerSelected = (owner: string) => {
+    return selectedOwnerGPMs.length === 0 || selectedOwnerGPMs.includes(owner);
+  };
+
   // 初始化选中所有选项
   useEffect(() => {
     if (dmsStatusOptions.length > 0) {
@@ -301,47 +342,83 @@ function App() {
     }
   }, [dmsStatusOptions]);
 
-  // 修改 availableCards 的过滤逻辑
+  // 修改 availableCards 的计算逻辑
   const availableCards = useMemo(() => {
-    if (!fileData) return [];
-    
-    return fileData.rows.filter(row => {
-      // 检查是否已被选择
-      const isCardSelected = selectedCards.some(selected => 
-        selected['Item'] === row['Item'] && 
-        selected['UCM DMS Weightage'] === row['UCM DMS Weightage'] &&
-        selected['UCM status'] === row['UCM status'] &&
-        selected['WebUI status'] === row['WebUI status'] &&
-        selected['Campaign'] === row['Campaign']
-      );
-      
-      if (isCardSelected) return false;
+    // 移除 selectedPillar 和 selectedCategory 的检查
+    return fileData?.rows.filter(card => 
+      // 只有当选择了特定的 Pillar 和 Category 时才进行过滤
+      ((!selectedPillar && !selectedCategory) || 
+        (card.Pillar === selectedPillar && 
+         (!selectedCategory || card.Category === selectedCategory))) &&
+      (!selectedDMSStatus.length || selectedDMSStatus.includes(card['DMS status'])) &&
+      (selectedUCMStatus === 'All' || card['UCM status'] === selectedUCMStatus) &&
+      (selectedWebUIStatus === 'All' || card['WebUI status'] === selectedWebUIStatus) &&
+      (selectedOwnerGPMs.length === 0 || (card['Owner GPM'] && selectedOwnerGPMs.includes(card['Owner GPM']))) &&
+      (selectedUCMDMS === 'All' || 
+        (selectedUCMDMS === 'Yes' ? card['UCM status'] === 'Included in UCM DMS' : 
+                                   card['UCM status'] !== 'Included in UCM DMS')) &&
+      (selectedCampaignLevel === 'All' || 
+        (selectedCampaignLevel === 'Yes' ? card['Can apply to campaign level'] === 'Can apply to campaign level' : 
+                                         card['Can apply to campaign level'] !== 'Can apply to campaign level')) &&
+      (applyToState.New === 'All' || 
+        (applyToState.New === 'Yes' ? card['Can apply to new campaign'] === 'Can apply to new campaign' : 
+                                     card['Can apply to new campaign'] === '-')) &&
+      (applyToState.Existing === 'All' || 
+        (applyToState.Existing === 'Yes' ? card['Can apply to existing campaign'] === 'Can apply to existing campaign' : 
+                                          card['Can apply to existing campaign'] === '-')) &&
+      (applyCampaignTypeState.Search === 'All' || 
+        (applyCampaignTypeState.Search === 'Yes' ? card['Can apply to Search campaign'] === 'Can apply to Search campaign' : 
+                                                  card['Can apply to Search campaign'] === '-')) &&
+      (applyCampaignTypeState.Pmax === 'All' || 
+        (applyCampaignTypeState.Pmax === 'Yes' ? card['Can apply to Pmax campaign'] === 'Can apply to Pmax campaign' : 
+                                                  card['Can apply to Pmax campaign'] === '-')) &&
+      (applyCampaignTypeState.Shopping === 'All' || 
+        (applyCampaignTypeState.Shopping === 'Yes' ? card['Can apply to Shopping campaign'] === 'Can apply to Shopping campaign' : 
+                                                  card['Can apply to Shopping campaign'] === '-')) &&
+      (applyCampaignTypeState.DNV === 'All' || 
+        (applyCampaignTypeState.DNV === 'Yes' ? card['Can apply to DNV campaign'] === 'Can apply to DNV campaign' : 
+                                                  card['Can apply to DNV campaign'] === '-')) &&
+      (alreadyApplyTypeState.Search === 'All' || 
+        (alreadyApplyTypeState.Search === 'Yes' ? card['Already apply to Search campaign'] === 'Already apply to Search campaign' : 
+                                               card['Already apply to Search campaign'] === '-')) &&
+      (alreadyApplyTypeState.Pmax === 'All' || 
+        (alreadyApplyTypeState.Pmax === 'Yes' ? card['Already apply to Pmax campaign'] === 'Already apply to Pmax campaign' : 
+                                               card['Already apply to Pmax campaign'] === '-')) &&
+      (alreadyApplyTypeState.Shopping === 'All' || 
+        (alreadyApplyTypeState.Shopping === 'Yes' ? card['Already apply to Shopping campaign'] === 'Already apply to Shopping campaign' : 
+                                                 card['Already apply to Shopping campaign'] === '-')) &&
+      (alreadyApplyTypeState.DNV === 'All' || 
+        (alreadyApplyTypeState.DNV === 'Yes' ? card['Already apply to DNV campaign'] === 'Already apply to DNV campaign' : 
+                                            card['Already apply to DNV campaign'] === '-')) &&
+      (selectedWebUIStatus === 'All' || 
+        card['WebUI status'] === webUIStatusMap[selectedWebUIStatus as keyof typeof webUIStatusMap])
+    ) || [];
+  }, [fileData, selectedPillar, selectedCategory, selectedDMSStatus, selectedUCMStatus, selectedWebUIStatus, selectedOwnerGPMs, selectedUCMDMS, selectedCampaignLevel, applyToState, applyCampaignTypeState, alreadyApplyTypeState]);
 
-      // 应用所有过滤条件
-      const matchPillar = !selectedPillar || (row.Pillar || 'Other') === selectedPillar;
-      const matchCategory = !selectedCategory || (row.Category || 'Other') === selectedCategory;
-      const matchUCMStatus = selectedUCMStatus === 'All' || row['UCM status'] === selectedUCMStatus;
-      const matchWebUIStatus = selectedWebUIStatus === 'All' || row['WebUI status'] === selectedWebUIStatus;
-      const matchCampaign = selectedCampaign === 'All' || row.Campaign === selectedCampaign;
+  // 修改分组函数，先按 Category 分组，再按 Pillar 分组
+  const groupSelectedCardsByCategory = useMemo(() => {
+    const groups: Record<string, Record<string, CardWithWeight[]>> = {
+      'Health check': {},
+      'Feature adoption': {},
+      'Recommendation': {}
+    };
 
-      return matchPillar && matchCategory && matchUCMStatus && matchWebUIStatus && matchCampaign;
-    });
-  }, [fileData, selectedCards, selectedPillar, selectedCategory, selectedUCMStatus, selectedWebUIStatus, selectedCampaign]);
-
-  // 首先添加一个分组函数
-  const groupedSelectedCards = useMemo(() => {
-    const groups: Record<string, Record<string, CardWithWeight[]>> = {};
     selectedCards.forEach(card => {
+      let category = 'Recommendation';
+      if (card.Category?.toLowerCase().includes('health check')) {
+        category = 'Health check';
+      } else if (card.Category?.toLowerCase().includes('feature')) {
+        category = 'Feature adoption';
+      }
+
       const pillar = card.Pillar || 'Other';
-      const category = card.Category || 'Other';
-      if (!groups[pillar]) {
-        groups[pillar] = {};
+
+      if (!groups[category][pillar]) {
+        groups[category][pillar] = [];
       }
-      if (!groups[pillar][category]) {
-        groups[pillar][category] = [];
-      }
-      groups[pillar][category].push(card);
+      groups[category][pillar].push(card);
     });
+
     return groups;
   }, [selectedCards]);
 
@@ -634,91 +711,31 @@ function App() {
   // 修改卡片渲染部分
   const renderCard = (card: Card) => (
     <div style={{
-      padding: '12px',
-      border: '1px solid #ccc',
+      border: '1px solid #d9d9d9',
       borderRadius: '4px',
-      cursor: 'move',
+      padding: '12px',
       backgroundColor: 'white',
-      boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
-      fontSize: '13px'
+      cursor: 'grab',
+      fontSize: '14px'
     }}>
-      {/* Labels 区域 */}
-      <div style={{ 
-        marginBottom: '12px',
-        display: 'flex',
-        flexWrap: 'wrap',
-        gap: '4px'
-      }}>
-        {/* 添加 Category 标签 */}
-        {card['Category'] && card['Category'] !== '-' && (
-          <span style={{
-            ...labelStyle,
-            ...getCategoryStyle(card['Category'])
-          }}>{card['Category']}</span>
-        )}
-        {card['UCM status'] && card['UCM status'] !== '-' && (
-          <span style={labelStyle}>{card['UCM status']}</span>
-        )}
-        {card['WebUI status'] && card['WebUI status'] !== '-' && (
-          <span style={labelStyle}>{card['WebUI status']}</span>
-        )}
-        {card['Campaign'] && card['Campaign'] !== '-' && (
-          <span style={labelStyle}>{card['Campaign']}</span>
-        )}
-        {card['Campaign creation'] && card['Campaign creation'] !== '-' && (
-          <span style={labelStyle}>{card['Campaign creation']}</span>
-        )}
-        {card['Existing campaign'] && card['Existing campaign'] !== '-' && (
-          <span style={labelStyle}>{card['Existing campaign']}</span>
-        )}
-      </div>
-
-      {/* 主要信息区域 */}
       <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '8px'
+        color: '#333',
+        marginBottom: '8px',
+        fontSize: '15px',
+        paddingRight: '24px',  // 为删除按钮留出空间
+        display: '-webkit-box',
+        WebkitLineClamp: '2',  // 最多显示两行
+        WebkitBoxOrient: 'vertical',
+        overflow: 'hidden',
+        lineHeight: '1.4'  // 设置行高
       }}>
-        {/* Item */}
-        {card['Item'] && (
-          <div style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'normal',
-            lineHeight: '1.4'
-          }}>
-            <strong>Item:</strong> {card['Item']}
-          </div>
-        )}
-        
-        {/* UCM DMS Weightage */}
-        {card['UCM DMS Weightage'] && (
-          <div style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap'
-          }}>
-            <strong>UCM DMS Weightage:</strong> {card['UCM DMS Weightage']}
-          </div>
-        )}
-
-        {/* Notes - 新增 */}
-        {card['Notes'] && card['Notes'] !== '-' && (
-          <div style={{
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'normal',
-            lineHeight: '1.4',
-            color: '#666',
-            fontSize: '12px',
-            padding: '4px 8px',
-            backgroundColor: '#f9f9f9',
-            borderRadius: '4px',
-            border: '1px solid #eee'
-          }}>
-            <strong>Notes:</strong> {card['Notes']}
-          </div>
-        )}
+        {card.Item}
+      </div>
+      <div style={{
+        color: '#666',
+        fontSize: '13px'
+      }}>
+        UCM DMS Weightage: {card['UCM DMS Weightage']}
       </div>
     </div>
   );
@@ -786,18 +803,61 @@ function App() {
     });
   };
 
-  // 修改计数函数，添加 Campaign 过滤
-  const getFilteredCardCount = (cards: any[], pillar?: string, category?: string) => {
-    return cards.filter(card => {
-      // 考虑所有过滤条件
-      const matchUCMStatus = selectedUCMStatus === 'All' || card['UCM status'] === selectedUCMStatus;
-      const matchWebUIStatus = selectedWebUIStatus === 'All' || card['WebUI status'] === selectedWebUIStatus;
-      const matchCampaign = selectedCampaign === 'All' || card.Campaign === selectedCampaign;
-      const matchPillar = !pillar || card.Pillar === pillar;
-      const matchCategory = !category || card.Category === category;
-
-      return matchPillar && matchCategory && matchUCMStatus && matchWebUIStatus && matchCampaign;
-    }).length;
+  // 修改导航栏数据统计的计算逻辑
+  const getFilteredCount = (pillar: string | null, category: string | null) => {
+    if (!fileData?.rows) return 0;
+    
+    return fileData.rows.filter(card => 
+      // Pillar 和 Category 过滤
+      (!pillar || card.Pillar === pillar) &&
+      (!category || card.Category === category) &&
+      // Owner GPM 过滤
+      (selectedOwnerGPMs.length === 0 || (card['Owner GPM'] && selectedOwnerGPMs.includes(card['Owner GPM']))) &&
+      // New/Existing campaign 过滤
+      (applyToState.New === 'All' || 
+        (applyToState.New === 'Yes' ? card['Can apply to new campaign'] === 'Can apply to new campaign' : 
+                                     card['Can apply to new campaign'] === '-')) &&
+      (applyToState.Existing === 'All' || 
+        (applyToState.Existing === 'Yes' ? card['Can apply to existing campaign'] === 'Can apply to existing campaign' : 
+                                          card['Can apply to existing campaign'] === '-')) &&
+      // Can apply to campaign type 过滤
+      (applyCampaignTypeState.Search === 'All' || 
+        (applyCampaignTypeState.Search === 'Yes' ? card['Can apply to Search campaign'] === 'Can apply to Search campaign' : 
+                                                  card['Can apply to Search campaign'] === '-')) &&
+      (applyCampaignTypeState.Pmax === 'All' || 
+        (applyCampaignTypeState.Pmax === 'Yes' ? card['Can apply to Pmax campaign'] === 'Can apply to Pmax campaign' : 
+                                              card['Can apply to Pmax campaign'] === '-')) &&
+      (applyCampaignTypeState.Shopping === 'All' || 
+        (applyCampaignTypeState.Shopping === 'Yes' ? card['Can apply to Shopping campaign'] === 'Can apply to Shopping campaign' : 
+                                                  card['Can apply to Shopping campaign'] === '-')) &&
+      (applyCampaignTypeState.DNV === 'All' || 
+        (applyCampaignTypeState.DNV === 'Yes' ? card['Can apply to DNV campaign'] === 'Can apply to DNV campaign' : 
+                                              card['Can apply to DNV campaign'] === '-')) &&
+      // Already apply to campaign type 过滤
+      (alreadyApplyTypeState.Search === 'All' || 
+        (alreadyApplyTypeState.Search === 'Yes' ? card['Already apply to Search campaign'] === 'Already apply to Search campaign' : 
+                                               card['Already apply to Search campaign'] === '-')) &&
+      (alreadyApplyTypeState.Pmax === 'All' || 
+        (alreadyApplyTypeState.Pmax === 'Yes' ? card['Already apply to Pmax campaign'] === 'Already apply to Pmax campaign' : 
+                                             card['Already apply to Pmax campaign'] === '-')) &&
+      (alreadyApplyTypeState.Shopping === 'All' || 
+        (alreadyApplyTypeState.Shopping === 'Yes' ? card['Already apply to Shopping campaign'] === 'Already apply to Shopping campaign' : 
+                                                 card['Already apply to Shopping campaign'] === '-')) &&
+      (alreadyApplyTypeState.DNV === 'All' || 
+        (alreadyApplyTypeState.DNV === 'Yes' ? card['Already apply to DNV campaign'] === 'Already apply to DNV campaign' : 
+                                            card['Already apply to DNV campaign'] === '-')) &&
+      // 添加 Included in UCM DMS 过滤
+      (selectedUCMDMS === 'All' || 
+        (selectedUCMDMS === 'Yes' ? card['UCM status'] === 'Included in UCM DMS' : 
+                                   card['UCM status'] !== 'Included in UCM DMS')) &&
+      // 添加 Can apply to campaign 过滤
+      (selectedCampaignLevel === 'All' || 
+        (selectedCampaignLevel === 'Yes' ? card['Can apply to campaign level'] === 'Can apply to campaign level' : 
+                                         card['Can apply to campaign level'] !== 'Can apply to campaign level')) &&
+      // WebUI status 过滤
+      (selectedWebUIStatus === 'All' || 
+        card['WebUI status'] === webUIStatusMap[selectedWebUIStatus as keyof typeof webUIStatusMap])
+    ).length;
   };
 
   // 修改排序顺序的类型
@@ -805,6 +865,144 @@ function App() {
     'Health check': 1,
     'Feature adoption': 2,
     'Tactic': 3
+  };
+
+  const handleSave = () => {
+    if (!fileData || !selectedCards.length) return;
+
+    const success = exportToCSV(fileData, selectedCards, originalFileName);
+    
+    if (success) {
+      showToast('File saved successfully!');
+    } else {
+      showToast('Error saving file. Please try again.');
+    }
+  };
+
+  // WebUI status 映射关系
+  const webUIStatusMap = {
+    'Available': 'WebUI Ready',
+    'Partially available': 'WebUI Partially Ready',
+    'Not available': 'WebUI Not Ready'
+  } as const;
+
+  // 首先添加一个函数来获取所有唯一的 Category
+  const getUniqueCategories = (cards: CardWithWeight[]) => {
+    const categories = new Set<string>();
+    cards.forEach(card => {
+      if (card.Category) {
+        if (card.Category.toLowerCase().includes('health check')) {
+          categories.add('Health check');
+        } else if (card.Category.toLowerCase().includes('feature')) {
+          categories.add('Feature adoption');
+        } else {
+          categories.add('Recommendation');
+        }
+      }
+    });
+    return Array.from(categories);
+  };
+
+  // 定义选中状态的样式常量
+  const SELECTED_STYLE = {
+    fontWeight: 500,  // 选中时字体加粗
+    border: '2px solid #4CAF50',  // 绿色粗边框
+    backgroundColor: '#f0fff0'  // 轻微的绿色背景
+  };
+
+  // 修改单选按钮样式
+  const radioButtonStyle = (isSelected: boolean) => ({
+    display: 'flex',
+    alignItems: 'center',
+    gap: '8px',
+    padding: '4px 8px',
+    cursor: 'pointer',
+    backgroundColor: isSelected ? '#f0fff0' : 'white',
+    borderRadius: '4px',
+    border: isSelected ? '2px solid #4CAF50' : '1px solid #d9d9d9',
+    fontWeight: isSelected ? 600 : 'normal',  // 改为 600 使文字加粗更明显
+    '& span': {  // 选项文字的样式
+      fontWeight: isSelected ? 600 : 'normal'  // 选中时文字加粗
+    }
+  });
+
+  // 修改按钮样式
+  const filterButtonStyle = (isSelected: boolean) => ({
+    padding: '4px 12px',
+    border: isSelected ? '2px solid #4CAF50' : '1px solid #d9d9d9',
+    borderRadius: '4px',
+    backgroundColor: isSelected ? '#f0fff0' : 'white',
+    cursor: 'pointer',
+    fontSize: '13px',
+    color: '#666',
+    transition: 'all 0.2s',
+    fontWeight: isSelected ? 600 : 'normal'  // 改为 600 使文字加粗更明显
+  });
+
+  // 在 handleWeightageChange 函数中添加验证和权重检查
+  const handleWeightageChange = (cardItem: string, value: string) => {
+    // 如果输入为空或0，直接设置为空字符串
+    if (!value || value === '0') {
+      setSelectedCards(prevCards =>
+        prevCards.map(card =>
+          card.Item === cardItem
+            ? { ...card, weightage: '' }
+            : card
+        )
+      );
+      return;
+    }
+
+    // 只允许输入数字和小数点，且最多两位小数
+    if (!/^\d*\.?\d{0,2}$/.test(value)) {
+      return;
+    }
+
+    // 找到当前卡片和其所属的 Pillar
+    const currentCard = selectedCards.find(card => card.Item === cardItem);
+    if (!currentCard) return;
+
+    const pillar = currentCard.Pillar;
+    const maxWeight = WEIGHT_BUCKETS[pillar];
+    
+    // 计算当前 Pillar 已使用的权重（不包括当前卡片）
+    const currentPillarWeight = selectedCards.reduce((sum, card) => {
+      if (card.Pillar === pillar && card.Item !== cardItem && card.weightage) {
+        return sum + parseFloat(card.weightage);
+      }
+      return sum;
+    }, 0);
+
+    // 检查新的权重是否会超过上限
+    const newWeight = parseFloat(value);
+    if (newWeight + currentPillarWeight <= maxWeight) {
+      setSelectedCards(prevCards =>
+        prevCards.map(card =>
+          card.Item === cardItem
+            ? { ...card, weightage: value }
+            : card
+        )
+      );
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>, targetPillar: string) => {
+    e.preventDefault();
+    const cardData = JSON.parse(e.dataTransfer.getData('card'));
+    
+    setSelectedCards(prevCards => {
+      // 检查卡片是否已经存在
+      if (prevCards.some(card => card.Item === cardData.Item)) {
+        return prevCards;
+      }
+
+      // 添加新卡片时不设置默认的 weightage 值
+      return [...prevCards, {
+        ...cardData,
+        // 移除这里的默认值设置
+        // weightage: '0'  // 删除这行
+      }];
+    });
   };
 
   return (
@@ -823,12 +1021,38 @@ function App() {
         marginBottom: '20px',
         flexShrink: 0
       }}>
-        {/* 标题 */}
-        <h1 style={{ 
-          margin: 0,
-          fontSize: '24px',
-          color: '#1a1a1a'
-        }}>DMS on WebUI Configuration Manager</h1>
+        {/* 标题区域 */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '20px'  // 添加间距
+        }}>
+          <h1 style={{ 
+            margin: 0,
+            fontSize: '24px',
+            color: '#1a1a1a'
+          }}>
+            DMS on WebUI Configuration Manager
+          </h1>
+          
+          {/* 添加 DMS Inventory 链接 */}
+          <Link
+            to="/inventory"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: '#0066cc',
+              textDecoration: 'none',
+              fontSize: '14px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            DMS Inventory
+            <span style={{ fontSize: '12px' }}>↗</span>
+          </Link>
+        </div>
 
         {/* 文件上传区域 */}
         <div style={{ 
@@ -836,6 +1060,8 @@ function App() {
           alignItems: 'center',
           gap: '10px'
         }}>
+          {/* 隐藏上传提示和按钮 */}
+          {/*
           <span style={{
             color: '#666',
             fontSize: '14px'
@@ -857,9 +1083,11 @@ function App() {
               style={{ display: 'none' }}
             />
           </label>
+          */}
 
-          <button
-            onClick={handleExport}
+          {/* 保留保存按钮 */}
+          <button 
+            onClick={handleSave}
             disabled={!selectedCards.length}
             style={{
               ...uploadButtonStyle,
@@ -873,32 +1101,484 @@ function App() {
         </div>
       </div>
 
+      {/* 过滤器区域 */}
+      <div style={{ 
+        marginTop: '24px',
+        marginBottom: '32px',  // 增加底部间距
+        display: 'flex',
+        gap: '24px',
+        backgroundColor: 'white',
+        padding: '24px',  // 增加内部填充，从 16px 改为 24px
+        borderRadius: '4px',
+        border: '1px solid #e8e8e8'
+      }}>
+        {/* 每个过滤器的容器样式保持一致 */}
+        <div style={{ 
+          width: '200px',
+          backgroundColor: 'white',  // 添加白色背景
+          padding: '15px',  // 添加内边距
+          borderRadius: '4px',  // 添加圆角
+          border: '1px solid #eee'  // 添加边框
+        }}>
+          {/* 过滤器标题样式 */}
+          <h3 style={{ 
+            margin: '0 0 12px 0',
+            fontSize: '14px',
+            color: '#666',
+            fontWeight: 600  // 从 500 改为 600，使标题更加粗
+          }}>
+            Owner GPM
+          </h3>
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {ownerGPMOptions.map((owner: string) => (
+              <button
+                key={owner}
+                onClick={() => {
+                  setSelectedOwnerGPMs((prev: string[]) => {
+                    if (prev.length === 0) {
+                      return [owner];
+                    }
+                    if (prev.includes(owner)) {
+                      const newSelection = prev.filter(o => o !== owner);
+                      return newSelection.length === 0 ? [] : newSelection;
+                    }
+                    return [...prev, owner];
+                  });
+                }}
+                style={{
+                  padding: '8px 12px',
+                  border: isOwnerSelected(owner) ? '2px solid #4CAF50' : '1px solid #d9d9d9',
+                  borderRadius: '4px',
+                  backgroundColor: isOwnerSelected(owner) ? '#f0fff0' : 'white',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  color: '#666',
+                  transition: 'all 0.3s',
+                  textAlign: 'left',
+                  width: '100%',
+                  fontWeight: isOwnerSelected(owner) ? 600 : 'normal'  // 改为 600 使文字加粗更明显
+                }}
+              >
+                {owner}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* 其他过滤器容器使用相同的样式 */}
+        <div style={{ 
+          width: '200px',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '4px',
+          border: '1px solid #eee'
+        }}>
+          {/* Included in UCM DMS 过滤器内容 */}
+          <h3 style={{ 
+            margin: '0 0 12px 0',
+            fontSize: '14px',
+            color: '#666',
+            fontWeight: 600  // 从 500 改为 600
+          }}>
+            Included in UCM DMS
+          </h3>
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {['Yes', 'No', 'All'].map((option) => (
+              <div
+                key={option}
+                onClick={() => setSelectedUCMDMS(option)}
+                style={radioButtonStyle(selectedUCMDMS === option)}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  border: '2px solid',
+                  borderColor: selectedUCMDMS === option ? '#1890ff' : '#d9d9d9',
+                  position: 'relative',
+                  flexShrink: 0
+                }}>
+                  {selectedUCMDMS === option && (
+                    <div style={{
+                      position: 'absolute',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      backgroundColor: '#1890ff',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)'
+                    }} />
+                  )}
+                </div>
+                <span style={{
+                  fontSize: '13px',
+                  color: '#666'
+                }}>
+                  {option}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ 
+          width: '200px',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '4px',
+          border: '1px solid #eee'
+        }}>
+          {/* Can apply to campaign 过滤器内容 */}
+          <h3 style={{ 
+            margin: '0 0 12px 0',
+            fontSize: '14px',
+            color: '#666',
+            fontWeight: 600  // 从 500 改为 600
+          }}>
+            Can apply to campaign
+          </h3>
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {['Yes', 'No', 'All'].map((option) => (
+              <div
+                key={option}
+                onClick={() => setSelectedCampaignLevel(option)}
+                style={radioButtonStyle(selectedCampaignLevel === option)}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  border: '2px solid',
+                  borderColor: selectedCampaignLevel === option ? '#1890ff' : '#d9d9d9',
+                  position: 'relative',
+                  flexShrink: 0
+                }}>
+                  {selectedCampaignLevel === option && (
+                    <div style={{
+                      position: 'absolute',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      backgroundColor: '#1890ff',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)'
+                    }} />
+                  )}
+                </div>
+                <span style={{
+                  fontSize: '13px',
+                  color: '#666'
+                }}>
+                  {option}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ 
+          width: '300px',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '4px',
+          border: '1px solid #eee'
+        }}>
+          {/* Can apply to 过滤器内容 */}
+          <h3 style={{ 
+            margin: '0 0 12px 0',
+            fontSize: '14px',
+            color: '#666',
+            fontWeight: 600  // 从 500 改为 600
+          }}>
+            Can apply to
+          </h3>
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {/* New campaign 行 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span style={{ 
+                width: '120px',
+                fontSize: '13px',
+                color: '#666'
+              }}>
+                New campaign
+              </span>
+              <div style={{
+                display: 'flex',
+                gap: '8px'
+              }}>
+                {['Yes', 'No', 'All'].map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => setApplyToState(prev => ({
+                      ...prev,
+                      New: option
+                    }))}
+                    style={filterButtonStyle(applyToState.New === option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Existing campaign 行 */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span style={{ 
+                width: '120px',
+                fontSize: '13px',
+                color: '#666'
+              }}>
+                Existing campaign
+              </span>
+              <div style={{
+                display: 'flex',
+                gap: '8px'
+              }}>
+                {['Yes', 'No', 'All'].map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => setApplyToState(prev => ({
+                      ...prev,
+                      Existing: option
+                    }))}
+                    style={filterButtonStyle(applyToState.Existing === option)}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ 
+          width: '300px',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '4px',
+          border: '1px solid #eee'
+        }}>
+          {/* Can apply to campaign type 过滤器内容 */}
+          <h3 style={{ 
+            margin: '0 0 12px 0',
+            fontSize: '14px',
+            color: '#666',
+            fontWeight: 600  // 从 500 改为 600
+          }}>
+            Can apply to campaign type
+          </h3>
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {['Search', 'Pmax', 'Shopping', 'DNV'].map((campaignType) => (
+              <div key={campaignType} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ 
+                  width: '120px',
+                  fontSize: '13px',
+                  color: '#666'
+                }}>
+                  {campaignType} campaign
+                </span>
+                <div style={{
+                  display: 'flex',
+                  gap: '8px'
+                }}>
+                  {['Yes', 'No', 'All'].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setApplyCampaignTypeState(prev => ({
+                        ...prev,
+                        [campaignType]: option
+                      }))}
+                      style={filterButtonStyle(applyCampaignTypeState[campaignType] === option)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ 
+          width: '300px',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '4px',
+          border: '1px solid #eee'
+        }}>
+          {/* Already apply to campaign type 过滤器内容 */}
+          <h3 style={{ 
+            margin: '0 0 12px 0',
+            fontSize: '14px',
+            color: '#666',
+            fontWeight: 600  // 从 500 改为 600
+          }}>
+            Already apply to campaign type
+          </h3>
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {['Search', 'Pmax', 'Shopping', 'DNV'].map((campaignType) => (
+              <div key={campaignType} style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ 
+                  width: '120px',
+                  fontSize: '13px',
+                  color: '#666'
+                }}>
+                  {campaignType} campaign
+                </span>
+                <div style={{
+                  display: 'flex',
+                  gap: '8px'
+                }}>
+                  {['Yes', 'No', 'All'].map((option) => (
+                    <button
+                      key={option}
+                      onClick={() => setAlreadyApplyTypeState(prev => ({
+                        ...prev,
+                        [campaignType]: option
+                      }))}
+                      style={filterButtonStyle(alreadyApplyTypeState[campaignType] === option)}
+                    >
+                      {option}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Already available on WebUI 过滤器 */}
+        <div style={{ 
+          width: '200px',
+          backgroundColor: 'white',
+          padding: '15px',
+          borderRadius: '4px',
+          border: '1px solid #eee'
+        }}>
+          <h3 style={{ 
+            margin: '0 0 12px 0',
+            fontSize: '14px',
+            color: '#666',
+            fontWeight: 600  // 从 500 改为 600
+          }}>
+            Already available on WebUI
+          </h3>
+          <div style={{ 
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            {['Available', 'Partially available', 'Not available', 'All'].map((option) => (
+              <div
+                key={option}
+                onClick={() => setSelectedWebUIStatus(option)}
+                style={radioButtonStyle(selectedWebUIStatus === option)}
+              >
+                <div style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  border: '2px solid',
+                  borderColor: selectedWebUIStatus === option ? '#1890ff' : '#d9d9d9',
+                  position: 'relative',
+                  flexShrink: 0
+                }}>
+                  {selectedWebUIStatus === option && (
+                    <div style={{
+                      position: 'absolute',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      backgroundColor: '#1890ff',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)'
+                    }} />
+                  )}
+                </div>
+                <span style={{
+                  fontSize: '13px',
+                  color: '#666'
+                }}>
+                  {option}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {fileData && (
         <>
           <div style={{ 
             display: 'grid', 
-            gridTemplateColumns: '250px 400px 1fr',  // 将固定宽度改为自适应
-            gap: '20px',
+            gridTemplateColumns: '250px 400px 1fr',
+            gap: '32px',
             flex: 1,
             minHeight: 0,
             overflow: 'hidden'
           }}>
-            {/* 左侧筛选区域 */}
+            {/* 左侧导航栏 */}
             <div style={{ 
-              backgroundColor: '#f5f5f5',
+              backgroundColor: 'white',
               borderRadius: '4px',
               overflow: 'hidden',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              border: '1px solid #e8e8e8'
             }}>
+              {/* All items available on UCM */}
               <h3 style={{ 
                 margin: '0',
                 padding: '15px',
+                fontSize: '16px',
+                color: '#333',
                 flexShrink: 0,
-                borderBottom: '1px solid #ddd',
                 backgroundColor: '#f9f9f9'
               }}>
-                All items available on UCM
+                All components
               </h3>
               
               {/* All 选项 */}
@@ -910,14 +1590,15 @@ function App() {
                 style={{
                   padding: '10px 15px',
                   cursor: 'pointer',
-                  backgroundColor: !selectedPillar && !selectedCategory ? '#e6e6e6' : 'transparent',
+                  backgroundColor: 'transparent',
                   borderBottom: '1px solid #ddd',
                   fontSize: '14px',
-                  color: !selectedPillar && !selectedCategory ? '#333' : '#666',
-                  transition: 'background-color 0.2s'
+                  color: !selectedPillar && !selectedCategory ? '#0066cc' : '#666',
+                  fontWeight: !selectedPillar && !selectedCategory ? 600 : 'normal',  // 改为 600 以确保加粗效果更明显
+                  transition: 'all 0.2s'
                 }}
               >
-                All ({getFilteredCardCount(fileData?.rows || [])})
+                All ({getFilteredCount(null, null)})
               </div>
 
               {/* 原有的导航内容 */}
@@ -941,7 +1622,7 @@ function App() {
                         marginBottom: '8px'
                       }}
                     >
-                      {pillar} ({getFilteredCardCount(fileData?.rows || [], pillar)})
+                      {pillar} ({getFilteredCount(pillar, null)})
                     </div>
                     {pillarsAndCategories.categoriesByPillar[pillar]?.map(category => (
                       <div
@@ -960,7 +1641,7 @@ function App() {
                           fontSize: '13px'
                         }}
                       >
-                        {category} ({getFilteredCardCount(fileData?.rows || [], pillar, category)})
+                        {category} ({getFilteredCount(pillar, category)})
                       </div>
                     ))}
                   </div>
@@ -968,124 +1649,27 @@ function App() {
               </div>
             </div>
 
-            {/* 中间区域改为单列 */}
+            {/* Available Cards 区域 */}
             <div style={{ 
               overflow: 'hidden',
               display: 'flex',
-              flexDirection: 'column'
+              flexDirection: 'column',
+              backgroundColor: 'white',  // 添加白色背景
+              border: '1px solid #e8e8e8',  // 添加边框
+              borderRadius: '4px'  // 添加圆角
             }}>
+              {/* Available Cards */}
               <h3 style={{ 
                 margin: '0',
                 padding: '15px',
-                flexShrink: 0
+                fontSize: '16px',
+                color: '#333',
+                flexShrink: 0,
+                backgroundColor: '#f9f9f9'  // 添加灰色背景
               }}>
                 Available Cards
               </h3>
               
-              {/* UCM Status Filter */}
-              <div style={{
-                padding: '0 15px 15px 15px',
-                borderBottom: '1px solid #eee',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '12px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '5px'
-                }}>
-                  <label style={{
-                    fontSize: '13px',
-                    color: '#666'
-                  }}>
-                    UCM Status Filter
-                  </label>
-                  <select
-                    value={selectedUCMStatus}
-                    onChange={(e) => setSelectedUCMStatus(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '6px',
-                      borderRadius: '4px',
-                      border: '1px solid #ccc',
-                      fontSize: '13px',
-                      height: '32px'
-                    }}
-                  >
-                    {getFilterOptions.ucmStatus.map(status => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* WebUI Status Filter */}
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '5px'
-                }}>
-                  <label style={{
-                    fontSize: '13px',
-                    color: '#666'
-                  }}>
-                    WebUI Status Filter
-                  </label>
-                  <select
-                    value={selectedWebUIStatus}
-                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => {
-                      setSelectedWebUIStatus(e.target.value);
-                    }}
-                    style={{
-                      width: '100%',
-                      padding: '6px',
-                      borderRadius: '4px',
-                      border: '1px solid #ccc',
-                      fontSize: '13px',
-                      height: '32px'
-                    }}
-                  >
-                    {getFilterOptions.webUIStatus.map(status => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Campaign Filter */}
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '5px'
-                }}>
-                  <label style={{
-                    fontSize: '13px',
-                    color: '#666'
-                  }}>
-                    Campaign Filter
-                  </label>
-                  <select
-                    value={selectedCampaign}
-                    onChange={(e) => setSelectedCampaign(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '6px',
-                      borderRadius: '4px',
-                      border: '1px solid #ccc',
-                      fontSize: '13px',
-                      height: '32px'
-                    }}
-                  >
-                    {campaignOptions.map(campaign => (
-                      <option key={campaign} value={campaign}>{campaign}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
               {/* 卡片列表 */}
               <div style={{ 
                 display: 'flex',
@@ -1098,9 +1682,12 @@ function App() {
               }}>
                 {availableCards
                   .filter(card => 
+                    // 添加过滤条件：卡片不在已选择列表中
+                    !selectedCards.some(selectedCard => selectedCard.Item === card.Item) &&
                     (selectedUCMStatus === 'All' || card['UCM status'] === selectedUCMStatus) &&
                     (selectedWebUIStatus === 'All' || card['WebUI status'] === selectedWebUIStatus)
                   )
+                  .sort((a, b) => a.Item.localeCompare(b.Item))
                   .map((card) => (
                     <div
                       key={`${card['Item']}-${card['UCM DMS Weightage']}`}
@@ -1117,32 +1704,42 @@ function App() {
 
             {/* 右侧已选区域 */}
             <div style={{ 
-              backgroundColor: '#f5f5f5',
+              backgroundColor: 'white',  // 改为白色背景
               borderRadius: '4px',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              minWidth: '800px'  // 设置最小宽度，确保不会太窄
+              minWidth: '800px',
+              border: '1px solid #e8e8e8'  // 添加边框
             }}>
               {/* Calculation 区域 */}
               <div style={{
-                padding: '15px',
                 borderBottom: '1px solid #ddd'
               }}>
+                {/* Weights Calculation */}
                 <h3 style={{ 
-                  margin: '0 0 15px 0',
-                  fontSize: '16px'
+                  margin: '0',
+                  padding: '15px 24px',
+                  fontSize: '16px',
+                  color: '#333',
+                  backgroundColor: '#f9f9f9',
+                  borderBottom: '1px solid #e8e8e8'
                 }}>
                   Weights Calculation
                 </h3>
                 
+                {/* 权重计算内容区域 */}
                 <div style={{
+                  padding: '24px',  // 调整内容区域的内边距
                   display: 'grid',
-                  gridTemplateColumns: '250px 1fr',  // 增加左侧区域宽度
-                  gap: '30px'  // 增加间距
+                  gridTemplateColumns: '250px 1fr',
+                  gap: '0',
+                  position: 'relative'
                 }}>
                   {/* Available Weights */}
-                  <div>
+                  <div style={{
+                    paddingRight: '30px'  // 为分隔线留出空间
+                  }}>
                     <h4 style={{
                       margin: '0 0 10px 0',
                       fontSize: '14px',
@@ -1159,13 +1756,13 @@ function App() {
                         <div key={bucket} style={{
                           display: 'flex',
                           justifyContent: 'space-between',
-                          fontSize: '13px',
+                          fontSize: '14px',  // 从 13px 增加到 14px
                           padding: '6px 12px',
                           backgroundColor: 'white',
                           borderRadius: '4px',
                           alignItems: 'center',
                           border: '1px solid #e0e0e0',
-                          height: '26px'  // 改为 26px，与右侧完全一致
+                          height: '26px'
                         }}>
                           <span>{bucket}</span>
                           <span>{weight.toFixed(2)}%</span>
@@ -1174,8 +1771,20 @@ function App() {
                     </div>
                   </div>
 
+                  {/* 分隔线 */}
+                  <div style={{
+                    position: 'absolute',
+                    left: '250px',
+                    top: 0,
+                    bottom: 0,
+                    width: '1px',
+                    backgroundColor: '#e8e8e8'
+                  }} />
+
                   {/* Selected Weights */}
-                  <div>
+                  <div style={{
+                    paddingLeft: '30px'  // 为分隔线留出空间
+                  }}>
                     <h4 style={{
                       margin: '0 0 10px 0',
                       fontSize: '14px',
@@ -1203,7 +1812,7 @@ function App() {
                               width: '200px',
                               display: 'flex',
                               justifyContent: 'space-between',
-                              fontSize: '13px',
+                              fontSize: '14px',  // 从 13px 增加到 14px
                               padding: '6px 12px',
                               backgroundColor: getBackgroundColor(weight, totalWeight),
                               borderRadius: '4px',
@@ -1250,7 +1859,7 @@ function App() {
                                   <div key={category} style={{
                                     display: 'flex',
                                     justifyContent: 'space-between',
-                                    fontSize: '12px',
+                                    fontSize: '14px',  // 从 13px 改为 14px，与其他部分保持一致
                                     padding: '6px 12px',
                                     color: '#666',
                                     backgroundColor: 'white',
@@ -1258,7 +1867,7 @@ function App() {
                                     borderRadius: '4px',
                                     minWidth: '140px',
                                     height: '26px',
-                                    alignItems: 'center'  // 添加垂直居中对齐
+                                    alignItems: 'center'
                                   }}>
                                     <span>{category}</span>
                                     <span style={{ marginLeft: '12px' }}>{parseFloat(categoryWeight).toFixed(2)}%</span>
@@ -1273,292 +1882,420 @@ function App() {
                 </div>
               </div>
 
-              {/* 原有的 Selected Cards 内容 */}
-              <h3 style={{ 
-                margin: '0',
-                padding: '15px',
-                flexShrink: 0
-              }}>
-                Selected Cards
-              </h3>
+              {/* Selected Cards 内容区域 */}
               <div 
-                style={{ 
-                  padding: '15px',
-                  overflow: 'auto',
+                style={{
                   flex: 1,
-                  minHeight: 0
+                  overflow: 'auto',
+                  padding: '24px'
                 }}
                 onDragOver={(e) => {
-                  e.preventDefault();  // 必须阻止默认行为
-                  e.stopPropagation();
+                  e.preventDefault();
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
-                  e.stopPropagation();
-                  try {
-                    const droppedCard = JSON.parse(e.dataTransfer.getData('text/plain'));
-                    // 检查卡片是否已存在
-                    if (!selectedCards.some(card => JSON.stringify(card) === JSON.stringify(droppedCard))) {
-                      setSelectedCards(prevCards => [...prevCards, droppedCard]);
-                    }
-                  } catch (error) {
-                    console.error('Error processing dropped card:', error);
+                  const droppedCard = JSON.parse(e.dataTransfer.getData('text/plain'));
+                  const isCardExists = selectedCards.some(card => card.Item === droppedCard.Item);
+                  if (!isCardExists) {
+                    setSelectedCards(prev => [...prev, { ...droppedCard, weightage: '0' }]);
                   }
                 }}
               >
-                {Object.entries(groupedSelectedCards).map(([pillar, categories]) => (
-                  <div key={pillar} style={{ marginBottom: '20px' }}>
-                    <h4 style={{ margin: '0 0 10px 0', color: '#666' }}>{pillar}</h4>
-                    {Object.entries(categories).map(([category, cards]) => (
-                      <div key={category} style={{ marginBottom: '15px', marginLeft: '15px' }}>
-                        <h5 style={{ margin: '0 0 10px 0', color: '#888' }}>{category}</h5>
-                        {cards.map((card) => (
-                          <div
-                            key={`${card['UCM DMS']}-${card['Tactic code']}`}
-                            style={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              gap: '8px',
-                              marginBottom: '15px'
-                            }}
-                          >
-                            {/* 卡片主体部分保持不变 */}
+                {/* Selected Cards */}
+                <h3 style={{ 
+                  margin: '-24px -24px 24px -24px',  // 使用负边距扩展到边缘
+                  padding: '15px 24px',  // 左右内边距与外部容器对齐
+                  fontSize: '16px',
+                  color: '#333',
+                  backgroundColor: '#f9f9f9',
+                  borderBottom: '1px solid #e8e8e8'
+                }}>
+                  Selected Cards
+                </h3>
+
+                {/* 三列布局容器 */}
+                <div style={{
+                  display: 'flex',
+                  height: '100%',
+                  position: 'relative'
+                }}>
+                  {/* Health check 列 */}
+                  <div style={{
+                    flex: 1,
+                    minWidth: 0
+                  }}>
+                    <h3 style={{ margin: '0 0 20px 0', fontSize: '16px', color: '#333' }}>
+                      Health check
+                    </h3>
+                    {/* Health check 列的卡片列表 */}
+                    {(() => {
+                      // 首先获取该 category 下所有有卡片的 pillar
+                      const pillarsWithCards = Object.entries(WEIGHT_BUCKETS)
+                        .filter(([pillar]) => 
+                          selectedCards.some(card => 
+                            card.Pillar === pillar && 
+                            card.Category?.toLowerCase().includes('health check')
+                          )
+                        );
+
+                      return pillarsWithCards.map(([pillar], index) => {
+                        const cardsInPillar = selectedCards.filter(card => 
+                          card.Pillar === pillar && 
+                          card.Category?.toLowerCase().includes('health check')
+                        );
+                        
+                        if (cardsInPillar.length === 0) return null;
+                        
+                        // 只有当有多个 pillar 且不是第一个时才显示分隔线
+                        const showDivider = pillarsWithCards.length > 1 && index > 0;
+                        
+                        return (
+                          <div key={pillar}>
+                            {showDivider && (
+                              <div style={{
+                                height: '1px',
+                                backgroundColor: '#e8e8e8',
+                                margin: '12px 0 36px'
+                              }} />
+                            )}
+                            
+                            <h4 style={{ 
+                              margin: '0 0 16px 0',
+                              fontSize: '14px',
+                              color: '#666',
+                              fontWeight: 'normal'
+                            }}>
+                              {pillar}
+                            </h4>
                             <div style={{
                               display: 'flex',
-                              alignItems: 'flex-start',
-                              gap: '10px',
+                              flexDirection: 'column',
+                              gap: '24px'
                             }}>
-                              {/* 卡片内容 */}
-                              <div style={{
-                                flex: 1,
-                                padding: '12px',
-                                border: '1px solid #ccc',
-                                borderRadius: '4px',
-                                backgroundColor: 'white',
-                                position: 'relative'
-                              }}>
-                                {/* Labels 区域 */}
-                                <div style={{ 
-                                  marginBottom: '12px',
-                                  display: 'flex',
-                                  flexWrap: 'wrap',
-                                  gap: '4px'
-                                }}>
-                                  {/* 添加 Category 标签 */}
-                                  {card['Category'] && card['Category'] !== '-' && (
-                                    <span style={{
-                                      ...labelStyle,
-                                      ...getCategoryStyle(card['Category'])
-                                    }}>{card['Category']}</span>
-                                  )}
-                                  {card['UCM status'] && card['UCM status'] !== '-' && (
-                                    <span style={labelStyle}>{card['UCM status']}</span>
-                                  )}
-                                  {card['WebUI status'] && card['WebUI status'] !== '-' && (
-                                    <span style={labelStyle}>{card['WebUI status']}</span>
-                                  )}
-                                  {card['Campaign'] && card['Campaign'] !== '-' && (
-                                    <span style={labelStyle}>{card['Campaign']}</span>
-                                  )}
-                                  {card['Campaign creation'] && card['Campaign creation'] !== '-' && (
-                                    <span style={labelStyle}>{card['Campaign creation']}</span>
-                                  )}
-                                  {card['Existing campaign'] && card['Existing campaign'] !== '-' && (
-                                    <span style={labelStyle}>{card['Existing campaign']}</span>
-                                  )}
-                                </div>
-
-                                {/* 主要信息区域 */}
-                                <div style={{
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  gap: '8px'
-                                }}>
-                                  {/* Item */}
-                                  {card['Item'] && (
-                                    <div style={{
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'normal',
-                                      lineHeight: '1.4'
-                                    }}>
-                                      <strong>Item:</strong> {card['Item']}
-                                    </div>
-                                  )}
-                                  
-                                  {/* UCM DMS Weightage */}
-                                  {card['UCM DMS Weightage'] && (
-                                    <div style={{
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'nowrap'
-                                    }}>
-                                      <strong>UCM DMS Weightage:</strong> {card['UCM DMS Weightage']}
-                                    </div>
-                                  )}
-
-                                  {/* Notes - 新增 */}
-                                  {card['Notes'] && card['Notes'] !== '-' && (
-                                    <div style={{
-                                      overflow: 'hidden',
-                                      textOverflow: 'ellipsis',
-                                      whiteSpace: 'normal',
-                                      lineHeight: '1.4',
-                                      color: '#666',
-                                      fontSize: '12px',
-                                      padding: '4px 8px',
-                                      backgroundColor: '#f9f9f9',
-                                      borderRadius: '4px',
-                                      border: '1px solid #eee'
-                                    }}>
-                                      <strong>Notes:</strong> {card['Notes']}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* 删除按钮 */}
-                                <button
-                                  onClick={() => {
-                                    setSelectedCards(prevCards => 
-                                      prevCards.filter(c => {
-                                        // 使用更精确的比较方式
-                                        return !(
-                                          c['Item'] === card['Item'] && 
-                                          c['UCM DMS Weightage'] === card['UCM DMS Weightage'] &&
-                                          c['UCM status'] === card['UCM status'] &&
-                                          c['WebUI status'] === card['WebUI status'] &&
-                                          c['Campaign'] === card['Campaign']
-                                        );
-                                      })
-                                    );
-                                  }}
-                                  style={{
-                                    position: 'absolute',
-                                    top: '5px',
-                                    right: '5px',
-                                    border: 'none',
-                                    background: 'none',
-                                    padding: '4px',
-                                    cursor: 'pointer',
-                                    color: '#666',
-                                    fontSize: '16px',
+                              {cardsInPillar.map(card => (
+                                <div key={card.Item}>
+                                  {/* 卡片内容 */}
+                                  <div style={{ position: 'relative' }}>
+                                    {renderCard(card)}
+                                    <button
+                                      onClick={() => setSelectedCards(cards => 
+                                        cards.filter(c => c.Item !== card.Item)
+                                      )}
+                                      style={{
+                                        position: 'absolute',
+                                        top: '8px',
+                                        right: '8px',
+                                        border: 'none',
+                                        background: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        color: '#999'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                  {/* 权重输入框 */}
+                                  <div style={{ 
+                                    marginTop: '4px',
+                                    padding: '4px 12px',
                                     display: 'flex',
                                     alignItems: 'center',
-                                    justifyContent: 'center',
-                                    transition: 'color 0.2s'
-                                  }}
-                                  onMouseOver={(e: React.MouseEvent<HTMLButtonElement>) => 
-                                    e.currentTarget.style.color = '#ff4444'
-                                  }
-                                  onMouseOut={(e: React.MouseEvent<HTMLButtonElement>) => 
-                                    e.currentTarget.style.color = '#666'
-                                  }
-                                >
-                                  ×
-                                </button>
-                              </div>
-
-                              {/* Weightage 输入框 */}
-                              <div style={{
-                                width: '100px',
-                                display: 'flex',
-                                flexDirection: 'column',
-                                gap: '4px'
-                              }}>
-                                <label style={{ 
-                                  fontSize: '12px', 
-                                  color: '#666'
-                                }}>
-                                  Weightage
-                                </label>
-                                <div style={{
-                                  display: 'flex',
-                                  alignItems: 'center'
-                                }}>
-                                  <input
-                                    type="text"
-                                    value={card.weightage || ''}
-                                    onChange={(e) => {
-                                      const value = e.target.value.replace(/\D/g, '');  // 只允许数字
-                                      const numericValue = parseInt(value, 10);
-                                      
-                                      if (!value) {
-                                        // 如果输入为空，直接清除权重
-                                        setSelectedCards(cards =>
-                                          cards.map(c =>
-                                            c['Item'] === card['Item'] && 
-                                            c['UCM DMS'] === card['UCM DMS'] && 
-                                            c['Tactic code'] === card['Tactic code'] &&
-                                            c['Campaign'] === card['Campaign'] &&
-                                            c['UCM status'] === card['UCM status'] &&
-                                            c['WebUI status'] === card['WebUI status']
-                                              ? { ...c, weightage: undefined }
-                                              : c
-                                          )
-                                        );
-                                        return;
-                                      }
-
-                                      // 计算当前 pillar 的总权重（不包括当前卡片）
-                                      const currentPillarTotal = selectedCards.reduce((sum, c) => {
-                                        if (c.Pillar === card.Pillar && c !== card && c.weightage) {
-                                          return sum + parseFloat(c.weightage);
-                                        }
-                                        return sum;
-                                      }, 0);
-
-                                      // 检查是否已达到权重限制
-                                      if (currentPillarTotal >= WEIGHT_BUCKETS[card.Pillar]) {
-                                        showToast(
-                                          `The limit of weightage of this pillar is reached, please adjust across the items you selected.`
-                                        );
-                                        return;
-                                      }
-
-                                      // 计算新的权重是否会超过限制
-                                      const maxAllowed = WEIGHT_BUCKETS[card.Pillar] - currentPillarTotal;
-                                      const newValue = Math.min(numericValue, maxAllowed);
-
-                                      if (newValue >= 0) {
-                                        setSelectedCards(cards =>
-                                          cards.map(c =>
-                                            c['Item'] === card['Item'] && 
-                                            c['UCM DMS'] === card['UCM DMS'] && 
-                                            c['Tactic code'] === card['Tactic code'] &&
-                                            c['Campaign'] === card['Campaign'] &&
-                                            c['UCM status'] === card['UCM status'] &&
-                                            c['WebUI status'] === card['WebUI status']
-                                              ? { ...c, weightage: newValue.toString() }
-                                              : c
-                                          )
-                                        );
-                                      }
-                                    }}
-                                    style={{
-                                      width: '35px',
-                                      padding: '4px 6px',
-                                      border: '1px solid #ccc',
-                                      borderRadius: '4px',
-                                      fontSize: '13px',
-                                      textAlign: 'right'
-                                    }}
-                                  />
-                                  <span style={{
-                                    marginLeft: '2px',
-                                    fontSize: '13px',
-                                    color: '#666'
+                                    gap: '8px'
                                   }}>
-                                    .00 %
-                                  </span>
+                                    <span style={{
+                                      fontSize: '14px',
+                                      color: '#666',
+                                      flexShrink: 0
+                                    }}>
+                                      Weightage:
+                                    </span>
+                                    <input
+                                      type="text"
+                                      pattern="\d*\.?\d{0,2}"
+                                      value={card.weightage || ''}  // 使用空字符串代替0
+                                      onChange={(e) => handleWeightageChange(card.Item, e.target.value)}
+                                      style={{
+                                        width: '60px',
+                                        padding: '4px',
+                                        border: '1px solid #d9d9d9',
+                                        borderRadius: '4px',
+                                        textAlign: 'right'  // 添加右对齐
+                                      }}
+                                    />
+                                    <span style={{
+                                      fontSize: '14px',
+                                      color: '#666',
+                                      flexShrink: 0
+                                    }}>
+                                      %
+                                    </span>
+                                  </div>
                                 </div>
-                              </div>
+                              ))}
                             </div>
                           </div>
-                        ))}
-                      </div>
-                    ))}
+                        );
+                      });
+                    })()}
                   </div>
-                ))}
+
+                  {/* 第一条分隔线 */}
+                  <div style={{
+                    width: '1px',
+                    backgroundColor: '#e8e8e8',
+                    margin: '0 24px'
+                  }} />
+
+                  {/* Feature adoption 列 */}
+                  <div style={{
+                    flex: 1,
+                    minWidth: 0
+                  }}>
+                    <h3 style={{ margin: '0 0 20px 0', fontSize: '16px', color: '#333' }}>
+                      Feature adoption
+                    </h3>
+                    {(() => {
+                      // 首先获取该 category 下所有有卡片的 pillar
+                      const pillarsWithCards = Object.entries(WEIGHT_BUCKETS)
+                        .filter(([pillar]) => 
+                          selectedCards.some(card => 
+                            card.Pillar === pillar && 
+                            card.Category?.toLowerCase().includes('feature')
+                          )
+                        );
+
+                      return pillarsWithCards.map(([pillar], index) => {
+                        const cardsInPillar = selectedCards.filter(card => 
+                          card.Pillar === pillar && 
+                          card.Category?.toLowerCase().includes('feature')
+                        );
+                        
+                        if (cardsInPillar.length === 0) return null;
+                        
+                        // 只有当有多个 pillar 且不是第一个时才显示分隔线
+                        const showDivider = pillarsWithCards.length > 1 && index > 0;
+                        
+                        return (
+                          <div key={pillar}>
+                            {showDivider && (
+                              <div style={{
+                                height: '1px',
+                                backgroundColor: '#e8e8e8',
+                                margin: '12px 0 36px'
+                              }} />
+                            )}
+                            
+                            <h4 style={{ 
+                              margin: '0 0 16px 0',
+                              fontSize: '14px',
+                              color: '#666',
+                              fontWeight: 'normal'
+                            }}>
+                              {pillar}
+                            </h4>
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '24px'
+                            }}>
+                              {cardsInPillar.map(card => (
+                                <div key={card.Item}>
+                                  {/* 卡片内容 */}
+                                  <div style={{ position: 'relative' }}>
+                                    {renderCard(card)}
+                                    <button
+                                      onClick={() => setSelectedCards(cards => 
+                                        cards.filter(c => c.Item !== card.Item)
+                                      )}
+                                      style={{
+                                        position: 'absolute',
+                                        top: '8px',
+                                        right: '8px',
+                                        border: 'none',
+                                        background: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        color: '#999'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                  {/* 权重输入框 */}
+                                  <div style={{ 
+                                    marginTop: '4px',
+                                    padding: '4px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                  }}>
+                                    <span style={{
+                                      fontSize: '14px',
+                                      color: '#666',
+                                      flexShrink: 0
+                                    }}>
+                                      Weightage:
+                                    </span>
+                                    <input
+                                      type="text"
+                                      pattern="\d*\.?\d{0,2}"
+                                      value={card.weightage || ''}  // 使用空字符串代替0
+                                      onChange={(e) => handleWeightageChange(card.Item, e.target.value)}
+                                      style={{
+                                        width: '60px',
+                                        padding: '4px',
+                                        border: '1px solid #d9d9d9',
+                                        borderRadius: '4px',
+                                        textAlign: 'right'  // 添加右对齐
+                                      }}
+                                    />
+                                    <span style={{
+                                      fontSize: '14px',
+                                      color: '#666',
+                                      flexShrink: 0
+                                    }}>
+                                      %
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  {/* 第二条分隔线 */}
+                  <div style={{
+                    width: '1px',
+                    backgroundColor: '#e8e8e8',
+                    margin: '0 24px'
+                  }} />
+
+                  {/* Recommendation 列 */}
+                  <div style={{
+                    flex: 1,
+                    minWidth: 0
+                  }}>
+                    <h3 style={{ margin: '0 0 20px 0', fontSize: '16px', color: '#333' }}>
+                      Recommendation
+                    </h3>
+                    {(() => {
+                      // 首先获取该 category 下所有有卡片的 pillar
+                      const pillarsWithCards = Object.entries(WEIGHT_BUCKETS)
+                        .filter(([pillar]) => 
+                          selectedCards.some(card => 
+                            card.Pillar === pillar && 
+                            !card.Category?.toLowerCase().includes('health check') &&
+                            !card.Category?.toLowerCase().includes('feature')
+                          )
+                        );
+
+                      return pillarsWithCards.map(([pillar], index) => {
+                        const cardsInPillar = selectedCards.filter(card => 
+                          card.Pillar === pillar && 
+                          !card.Category?.toLowerCase().includes('health check') &&
+                          !card.Category?.toLowerCase().includes('feature')
+                        );
+                        
+                        if (cardsInPillar.length === 0) return null;
+                        
+                        // 只有当有多个 pillar 且不是第一个时才显示分隔线
+                        const showDivider = pillarsWithCards.length > 1 && index > 0;
+                        
+                        return (
+                          <div key={pillar}>
+                            {showDivider && (
+                              <div style={{
+                                height: '1px',
+                                backgroundColor: '#e8e8e8',
+                                margin: '12px 0 36px'
+                              }} />
+                            )}
+                            
+                            <h4 style={{ 
+                              margin: '0 0 16px 0',
+                              fontSize: '14px',
+                              color: '#666',
+                              fontWeight: 'normal'
+                            }}>
+                              {pillar}
+                            </h4>
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '24px'
+                            }}>
+                              {cardsInPillar.map(card => (
+                                <div key={card.Item}>
+                                  {/* 卡片内容 */}
+                                  <div style={{ position: 'relative' }}>
+                                    {renderCard(card)}
+                                    <button
+                                      onClick={() => setSelectedCards(cards => 
+                                        cards.filter(c => c.Item !== card.Item)
+                                      )}
+                                      style={{
+                                        position: 'absolute',
+                                        top: '8px',
+                                        right: '8px',
+                                        border: 'none',
+                                        background: 'none',
+                                        cursor: 'pointer',
+                                        padding: '4px',
+                                        color: '#999'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                  {/* 权重输入框 */}
+                                  <div style={{ 
+                                    marginTop: '4px',
+                                    padding: '4px 12px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '8px'
+                                  }}>
+                                    <span style={{
+                                      fontSize: '14px',
+                                      color: '#666',
+                                      flexShrink: 0
+                                    }}>
+                                      Weightage:
+                                    </span>
+                                    <input
+                                      type="text"
+                                      pattern="\d*\.?\d{0,2}"
+                                      value={card.weightage || ''}  // 使用空字符串代替0
+                                      onChange={(e) => handleWeightageChange(card.Item, e.target.value)}
+                                      style={{
+                                        width: '60px',
+                                        padding: '4px',
+                                        border: '1px solid #d9d9d9',
+                                        borderRadius: '4px',
+                                        textAlign: 'right'  // 添加右对齐
+                                      }}
+                                    />
+                                    <span style={{
+                                      fontSize: '14px',
+                                      color: '#666',
+                                      flexShrink: 0
+                                    }}>
+                                      %
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1599,6 +2336,20 @@ function App() {
               opacity: 1;
               transform: translate(-50%, 0);
             }
+          }
+        `}
+      </style>
+
+      {/* 添加全局样式 */}
+      <style>
+        {`
+          input[type="number"]::-webkit-outer-spin-button,
+          input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+          }
+          input[type="number"] {
+            -moz-appearance: textfield;
           }
         `}
       </style>
