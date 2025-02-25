@@ -63,7 +63,7 @@ const Inventory: React.FC<InventoryProps> = ({
   });
   const [showAllColumns, setShowAllColumns] = useState(false);
 
-  // 定义默认显示的列
+  // 修改这个数组的顺序
   const defaultColumns = [
     'Pillar',
     'Category',
@@ -854,11 +854,9 @@ const Inventory: React.FC<InventoryProps> = ({
                     backgroundColor: '#f5f5f5',
                     borderBottom: '2px solid #ddd'
                   }}>
-                    {/* 只显示默认列或全部列 */}
-                    {Object.keys(filteredData[0] || {}).map(key => (
-                      (showAllColumns || defaultColumns.includes(key)) && (
-                        <th key={key} style={tableHeaderStyle}>{key}</th>
-                      )
+                    {/* 修改这里：使用 defaultColumns 而不是 Object.keys */}
+                    {defaultColumns.map(key => (
+                      <th key={key} style={tableHeaderStyle}>{key}</th>
                     ))}
                   </tr>
                 </thead>
@@ -868,11 +866,9 @@ const Inventory: React.FC<InventoryProps> = ({
                       backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa',
                       borderBottom: '1px solid #eee'
                     }}>
-                      {/* 只显示默认列或全部列 */}
-                      {Object.keys(item).map(key => (
-                        (showAllColumns || defaultColumns.includes(key)) && (
-                          <td key={key} style={tableCellStyle}>{item[key]}</td>
-                        )
+                      {/* 这里也要修改：使用 defaultColumns */}
+                      {defaultColumns.map(key => (
+                        <td key={key} style={tableCellStyle}>{item[key]}</td>
                       ))}
                     </tr>
                   ))}

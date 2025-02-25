@@ -3,9 +3,10 @@ import { Card } from '../types';  // 我们需要创建一个类型文件
 
 interface DMSInventoryProps {
   data: Card[];
+  displayFields: readonly string[];  // 添加这个属性
 }
 
-const DMSInventory: React.FC<DMSInventoryProps> = ({ data }) => {
+const DMSInventory: React.FC<DMSInventoryProps> = ({ data, displayFields }) => {
   const [ucmStatusFilter, setUcmStatusFilter] = useState<string>('All');
   const [webUIStatusFilter, setWebUIStatusFilter] = useState<string>('All');
   const [campaignFilter, setCampaignFilter] = useState<string>('All');
@@ -139,27 +140,17 @@ const DMSInventory: React.FC<DMSInventoryProps> = ({ data }) => {
         }}>
           <thead>
             <tr style={{ backgroundColor: '#f5f5f5' }}>
-              <th style={tableHeaderStyle}>Pillar</th>
-              <th style={tableHeaderStyle}>Category</th>
-              <th style={tableHeaderStyle}>Item</th>
-              <th style={tableHeaderStyle}>UCM DMS Weightage</th>
-              <th style={tableHeaderStyle}>UCM Status</th>
-              <th style={tableHeaderStyle}>WebUI Status</th>
-              <th style={tableHeaderStyle}>Campaign</th>
-              <th style={tableHeaderStyle}>Notes</th>
+              {displayFields.map(field => (
+                <th key={field} style={tableHeaderStyle}>{field}</th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {filteredData.map((item, index) => (
               <tr key={index} style={{ borderBottom: '1px solid #eee' }}>
-                <td style={tableCellStyle}>{item.Pillar}</td>
-                <td style={tableCellStyle}>{item.Category}</td>
-                <td style={tableCellStyle}>{item.Item}</td>
-                <td style={tableCellStyle}>{item['UCM DMS Weightage']}</td>
-                <td style={tableCellStyle}>{item['UCM status']}</td>
-                <td style={tableCellStyle}>{item['WebUI status']}</td>
-                <td style={tableCellStyle}>{item.Campaign}</td>
-                <td style={tableCellStyle}>{item.Notes}</td>
+                {displayFields.map(field => (
+                  <td key={field} style={tableCellStyle}>{item[field]}</td>
+                ))}
               </tr>
             ))}
           </tbody>
