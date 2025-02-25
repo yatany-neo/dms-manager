@@ -330,70 +330,100 @@ function App() {
     return Array.from(new Set(owners));
   }, [fileData]);
 
-  // 判断是否选中（空数组表示全选）
-  const isOwnerSelected = (owner: string) => {
-    return selectedOwnerGPMs.length === 0 || selectedOwnerGPMs.includes(owner);
-  };
-
   // 初始化选中所有选项
   useEffect(() => {
-    if (dmsStatusOptions.length > 0) {
-      setSelectedDMSStatus(dmsStatusOptions);
+    if (fileData?.rows) {
+      const owners = new Set(fileData.rows
+        .map(item => item['Owner GPM'])
+        .filter((owner): owner is string => owner !== undefined));
+      setSelectedOwnerGPMs(Array.from(owners).sort());
     }
-  }, [dmsStatusOptions]);
+  }, [fileData]);
 
-  // 修改 availableCards 的计算逻辑
+  // 整合所有过滤器的逻辑到一个 filteredData
+  const filteredData = useMemo(() => {
+    let filtered = fileData?.rows || [];
+    
+    // Owner GPM 过滤
+    if (selectedOwnerGPMs.length === 0) {
+      return [];  // 当没有选中任何 Owner GPM 时返回空数组
+    }
+    filtered = filtered.filter(item => {
+      const ownerGPM = item['Owner GPM'];
+      return ownerGPM && selectedOwnerGPMs.includes(ownerGPM);
+    });
+
+    // UCM DMS 过滤
+    if (selectedUCMDMS !== 'All') {
+      filtered = filtered.filter(item => 
+        selectedUCMDMS === 'Yes' 
+          ? item['UCM status'] === 'Included in UCM DMS'
+          : item['UCM status'] !== 'Included in UCM DMS'
+      );
+    }
+
+    // Campaign Level 过滤
+    if (selectedCampaignLevel !== 'All') {
+      filtered = filtered.filter(item =>
+        selectedCampaignLevel === 'Yes'
+          ? item['Can apply to campaign level'] === 'Can apply to campaign level'
+          : item['Can apply to campaign level'] !== 'Can apply to campaign level'
+      );
+    }
+
+    // 其他过滤条件
+    filtered = filtered.filter(item => {
+      return (
+        // DMS Status 过滤
+        (!selectedDMSStatus.length || selectedDMSStatus.includes(item['DMS status'])) &&
+        // UCM Status 过滤
+        (selectedUCMStatus === 'All' || item['UCM status'] === selectedUCMStatus) &&
+        // WebUI Status 过滤
+        (selectedWebUIStatus === 'All' || 
+         item['WebUI status'] === webUIStatusMap[selectedWebUIStatus as keyof typeof webUIStatusMap]) &&
+        // Apply To 过滤
+        (applyToState.New === 'All' || 
+         (applyToState.New === 'Yes' ? item['Can apply to new campaign'] === 'Can apply to new campaign' 
+                                    : item['Can apply to new campaign'] === '-')) &&
+        (applyToState.Existing === 'All' || 
+         (applyToState.Existing === 'Yes' ? item['Can apply to existing campaign'] === 'Can apply to existing campaign'
+                                        : item['Can apply to existing campaign'] === '-')) &&
+        // Campaign Type 过滤
+        (applyCampaignTypeState.Search === 'All' || 
+         (applyCampaignTypeState.Search === 'Yes' ? item['Can apply to Search campaign'] === 'Can apply to Search campaign'
+                                                 : item['Can apply to Search campaign'] === '-')) &&
+        // ... 其他 Campaign Type 过滤条件 ...
+        // Already Apply Type 过滤
+        (alreadyApplyTypeState.Search === 'All' || 
+         (alreadyApplyTypeState.Search === 'Yes' ? item['Already apply to Search campaign'] === 'Already apply to Search campaign'
+                                                : item['Already apply to Search campaign'] === '-'))
+        // ... 其他 Already Apply Type 过滤条件 ...
+      );
+    });
+
+    return filtered;
+  }, [
+    fileData?.rows,
+    selectedOwnerGPMs,
+    selectedUCMDMS,
+    selectedCampaignLevel,
+    selectedDMSStatus,
+    selectedUCMStatus,
+    selectedWebUIStatus,
+    applyToState,
+    applyCampaignTypeState,
+    alreadyApplyTypeState
+  ]);
+
+  // availableCards 直接使用 filteredData
   const availableCards = useMemo(() => {
-    // 移除 selectedPillar 和 selectedCategory 的检查
-    return fileData?.rows.filter(card => 
-      // 只有当选择了特定的 Pillar 和 Category 时才进行过滤
-      ((!selectedPillar && !selectedCategory) || 
-        (card.Pillar === selectedPillar && 
-         (!selectedCategory || card.Category === selectedCategory))) &&
-      (!selectedDMSStatus.length || selectedDMSStatus.includes(card['DMS status'])) &&
-      (selectedUCMStatus === 'All' || card['UCM status'] === selectedUCMStatus) &&
-      (selectedWebUIStatus === 'All' || card['WebUI status'] === selectedWebUIStatus) &&
-      (selectedOwnerGPMs.length === 0 || (card['Owner GPM'] && selectedOwnerGPMs.includes(card['Owner GPM']))) &&
-      (selectedUCMDMS === 'All' || 
-        (selectedUCMDMS === 'Yes' ? card['UCM status'] === 'Included in UCM DMS' : 
-                                   card['UCM status'] !== 'Included in UCM DMS')) &&
-      (selectedCampaignLevel === 'All' || 
-        (selectedCampaignLevel === 'Yes' ? card['Can apply to campaign level'] === 'Can apply to campaign level' : 
-                                         card['Can apply to campaign level'] !== 'Can apply to campaign level')) &&
-      (applyToState.New === 'All' || 
-        (applyToState.New === 'Yes' ? card['Can apply to new campaign'] === 'Can apply to new campaign' : 
-                                     card['Can apply to new campaign'] === '-')) &&
-      (applyToState.Existing === 'All' || 
-        (applyToState.Existing === 'Yes' ? card['Can apply to existing campaign'] === 'Can apply to existing campaign' : 
-                                          card['Can apply to existing campaign'] === '-')) &&
-      (applyCampaignTypeState.Search === 'All' || 
-        (applyCampaignTypeState.Search === 'Yes' ? card['Can apply to Search campaign'] === 'Can apply to Search campaign' : 
-                                                  card['Can apply to Search campaign'] === '-')) &&
-      (applyCampaignTypeState.Pmax === 'All' || 
-        (applyCampaignTypeState.Pmax === 'Yes' ? card['Can apply to Pmax campaign'] === 'Can apply to Pmax campaign' : 
-                                                  card['Can apply to Pmax campaign'] === '-')) &&
-      (applyCampaignTypeState.Shopping === 'All' || 
-        (applyCampaignTypeState.Shopping === 'Yes' ? card['Can apply to Shopping campaign'] === 'Can apply to Shopping campaign' : 
-                                                  card['Can apply to Shopping campaign'] === '-')) &&
-      (applyCampaignTypeState.DNV === 'All' || 
-        (applyCampaignTypeState.DNV === 'Yes' ? card['Can apply to DNV campaign'] === 'Can apply to DNV campaign' : 
-                                                  card['Can apply to DNV campaign'] === '-')) &&
-      (alreadyApplyTypeState.Search === 'All' || 
-        (alreadyApplyTypeState.Search === 'Yes' ? card['Already apply to Search campaign'] === 'Already apply to Search campaign' : 
-                                               card['Already apply to Search campaign'] === '-')) &&
-      (alreadyApplyTypeState.Pmax === 'All' || 
-        (alreadyApplyTypeState.Pmax === 'Yes' ? card['Already apply to Pmax campaign'] === 'Already apply to Pmax campaign' : 
-                                               card['Already apply to Pmax campaign'] === '-')) &&
-      (alreadyApplyTypeState.Shopping === 'All' || 
-        (alreadyApplyTypeState.Shopping === 'Yes' ? card['Already apply to Shopping campaign'] === 'Already apply to Shopping campaign' : 
-                                                 card['Already apply to Shopping campaign'] === '-')) &&
-      (alreadyApplyTypeState.DNV === 'All' || 
-        (alreadyApplyTypeState.DNV === 'Yes' ? card['Already apply to DNV campaign'] === 'Already apply to DNV campaign' : 
-                                            card['Already apply to DNV campaign'] === '-')) &&
-      (selectedWebUIStatus === 'All' || 
-        card['WebUI status'] === webUIStatusMap[selectedWebUIStatus as keyof typeof webUIStatusMap])
-    ) || [];
-  }, [fileData, selectedPillar, selectedCategory, selectedDMSStatus, selectedUCMStatus, selectedWebUIStatus, selectedOwnerGPMs, selectedUCMDMS, selectedCampaignLevel, applyToState, applyCampaignTypeState, alreadyApplyTypeState]);
+    return filteredData.filter(card => 
+      // 只过滤 Pillar 和 Category
+      (!selectedPillar && !selectedCategory) || 
+      (card.Pillar === selectedPillar && 
+       (!selectedCategory || card.Category === selectedCategory))
+    );
+  }, [filteredData, selectedPillar, selectedCategory]);
 
   // 修改分组函数，先按 Category 分组，再按 Pillar 分组
   const groupSelectedCardsByCategory = useMemo(() => {
@@ -807,57 +837,74 @@ function App() {
   const getFilteredCount = (pillar: string | null, category: string | null) => {
     if (!fileData?.rows) return 0;
     
-    return fileData.rows.filter(card => 
-      // Pillar 和 Category 过滤
-      (!pillar || card.Pillar === pillar) &&
-      (!category || card.Category === category) &&
+    return fileData.rows.filter(card => {
       // Owner GPM 过滤
-      (selectedOwnerGPMs.length === 0 || (card['Owner GPM'] && selectedOwnerGPMs.includes(card['Owner GPM']))) &&
-      // New/Existing campaign 过滤
-      (applyToState.New === 'All' || 
-        (applyToState.New === 'Yes' ? card['Can apply to new campaign'] === 'Can apply to new campaign' : 
-                                     card['Can apply to new campaign'] === '-')) &&
-      (applyToState.Existing === 'All' || 
-        (applyToState.Existing === 'Yes' ? card['Can apply to existing campaign'] === 'Can apply to existing campaign' : 
-                                          card['Can apply to existing campaign'] === '-')) &&
-      // Can apply to campaign type 过滤
-      (applyCampaignTypeState.Search === 'All' || 
-        (applyCampaignTypeState.Search === 'Yes' ? card['Can apply to Search campaign'] === 'Can apply to Search campaign' : 
-                                                  card['Can apply to Search campaign'] === '-')) &&
-      (applyCampaignTypeState.Pmax === 'All' || 
-        (applyCampaignTypeState.Pmax === 'Yes' ? card['Can apply to Pmax campaign'] === 'Can apply to Pmax campaign' : 
-                                              card['Can apply to Pmax campaign'] === '-')) &&
-      (applyCampaignTypeState.Shopping === 'All' || 
-        (applyCampaignTypeState.Shopping === 'Yes' ? card['Can apply to Shopping campaign'] === 'Can apply to Shopping campaign' : 
-                                                  card['Can apply to Shopping campaign'] === '-')) &&
-      (applyCampaignTypeState.DNV === 'All' || 
-        (applyCampaignTypeState.DNV === 'Yes' ? card['Can apply to DNV campaign'] === 'Can apply to DNV campaign' : 
-                                              card['Can apply to DNV campaign'] === '-')) &&
-      // Already apply to campaign type 过滤
-      (alreadyApplyTypeState.Search === 'All' || 
-        (alreadyApplyTypeState.Search === 'Yes' ? card['Already apply to Search campaign'] === 'Already apply to Search campaign' : 
-                                               card['Already apply to Search campaign'] === '-')) &&
-      (alreadyApplyTypeState.Pmax === 'All' || 
-        (alreadyApplyTypeState.Pmax === 'Yes' ? card['Already apply to Pmax campaign'] === 'Already apply to Pmax campaign' : 
-                                             card['Already apply to Pmax campaign'] === '-')) &&
-      (alreadyApplyTypeState.Shopping === 'All' || 
-        (alreadyApplyTypeState.Shopping === 'Yes' ? card['Already apply to Shopping campaign'] === 'Already apply to Shopping campaign' : 
-                                                 card['Already apply to Shopping campaign'] === '-')) &&
-      (alreadyApplyTypeState.DNV === 'All' || 
-        (alreadyApplyTypeState.DNV === 'Yes' ? card['Already apply to DNV campaign'] === 'Already apply to DNV campaign' : 
-                                            card['Already apply to DNV campaign'] === '-')) &&
-      // 添加 Included in UCM DMS 过滤
-      (selectedUCMDMS === 'All' || 
-        (selectedUCMDMS === 'Yes' ? card['UCM status'] === 'Included in UCM DMS' : 
-                                   card['UCM status'] !== 'Included in UCM DMS')) &&
-      // 添加 Can apply to campaign 过滤
-      (selectedCampaignLevel === 'All' || 
-        (selectedCampaignLevel === 'Yes' ? card['Can apply to campaign level'] === 'Can apply to campaign level' : 
-                                         card['Can apply to campaign level'] !== 'Can apply to campaign level')) &&
-      // WebUI status 过滤
-      (selectedWebUIStatus === 'All' || 
-        card['WebUI status'] === webUIStatusMap[selectedWebUIStatus as keyof typeof webUIStatusMap])
-    ).length;
+      if (selectedOwnerGPMs.length === 0) {
+        return false;  // 如果没有选中任何 Owner GPM，直接返回 false
+      }
+      if (!card['Owner GPM'] || !selectedOwnerGPMs.includes(card['Owner GPM'])) {
+        return false;
+      }
+
+      // UCM DMS 过滤
+      if (selectedUCMDMS !== 'All') {
+        if (selectedUCMDMS === 'Yes' ? card['UCM status'] !== 'Included in UCM DMS' 
+                                    : card['UCM status'] === 'Included in UCM DMS') {
+          return false;
+        }
+      }
+
+      // Campaign Level 过滤
+      if (selectedCampaignLevel !== 'All') {
+        if (selectedCampaignLevel === 'Yes' ? card['Can apply to campaign level'] !== 'Can apply to campaign level'
+                                          : card['Can apply to campaign level'] === 'Can apply to campaign level') {
+          return false;
+        }
+      }
+
+      // 其他基本过滤条件
+      return (
+        (!pillar || card.Pillar === pillar) &&
+        (!category || card.Category === category) &&
+        (!selectedDMSStatus.length || selectedDMSStatus.includes(card['DMS status'])) &&
+        (selectedUCMStatus === 'All' || card['UCM status'] === selectedUCMStatus) &&
+        (selectedWebUIStatus === 'All' || 
+         card['WebUI status'] === webUIStatusMap[selectedWebUIStatus as keyof typeof webUIStatusMap]) &&
+        // Apply To 过滤
+        (applyToState.New === 'All' || 
+         (applyToState.New === 'Yes' ? card['Can apply to new campaign'] === 'Can apply to new campaign' 
+                                    : card['Can apply to new campaign'] === '-')) &&
+        (applyToState.Existing === 'All' || 
+         (applyToState.Existing === 'Yes' ? card['Can apply to existing campaign'] === 'Can apply to existing campaign'
+                                        : card['Can apply to existing campaign'] === '-')) &&
+        // Campaign Type 过滤
+        (applyCampaignTypeState.Search === 'All' || 
+         (applyCampaignTypeState.Search === 'Yes' ? card['Can apply to Search campaign'] === 'Can apply to Search campaign'
+                                                 : card['Can apply to Search campaign'] === '-')) &&
+        (applyCampaignTypeState.Pmax === 'All' || 
+         (applyCampaignTypeState.Pmax === 'Yes' ? card['Can apply to Pmax campaign'] === 'Can apply to Pmax campaign'
+                                               : card['Can apply to Pmax campaign'] === '-')) &&
+        (applyCampaignTypeState.Shopping === 'All' || 
+         (applyCampaignTypeState.Shopping === 'Yes' ? card['Can apply to Shopping campaign'] === 'Can apply to Shopping campaign'
+                                                   : card['Can apply to Shopping campaign'] === '-')) &&
+        (applyCampaignTypeState.DNV === 'All' || 
+         (applyCampaignTypeState.DNV === 'Yes' ? card['Can apply to DNV campaign'] === 'Can apply to DNV campaign'
+                                              : card['Can apply to DNV campaign'] === '-')) &&
+        // Already Apply Type 过滤
+        (alreadyApplyTypeState.Search === 'All' || 
+         (alreadyApplyTypeState.Search === 'Yes' ? card['Already apply to Search campaign'] === 'Already apply to Search campaign'
+                                                : card['Already apply to Search campaign'] === '-')) &&
+        (alreadyApplyTypeState.Pmax === 'All' || 
+         (alreadyApplyTypeState.Pmax === 'Yes' ? card['Already apply to Pmax campaign'] === 'Already apply to Pmax campaign'
+                                              : card['Already apply to Pmax campaign'] === '-')) &&
+        (alreadyApplyTypeState.Shopping === 'All' || 
+         (alreadyApplyTypeState.Shopping === 'Yes' ? card['Already apply to Shopping campaign'] === 'Already apply to Shopping campaign'
+                                                  : card['Already apply to Shopping campaign'] === '-')) &&
+        (alreadyApplyTypeState.DNV === 'All' || 
+         (alreadyApplyTypeState.DNV === 'Yes' ? card['Already apply to DNV campaign'] === 'Already apply to DNV campaign'
+                                             : card['Already apply to DNV campaign'] === '-'))
+      );
+    }).length;
   };
 
   // 修改排序顺序的类型
@@ -1005,6 +1052,23 @@ function App() {
     });
   };
 
+  // 修改 setSelectedOwnerGPMs 的处理逻辑
+  const handleOwnerGPMClick = (owner: string) => {
+    setSelectedOwnerGPMs(prev => {
+      if (prev.includes(owner)) {
+        // 如果移除后没有任何选中的 owner，返回空数组
+        const newSelection = prev.filter(o => o !== owner);
+        return newSelection.length === 0 ? [] : newSelection;
+      }
+      // 如果当前是空数组（即全不选状态），则只选中点击的这一个
+      if (prev.length === 0) {
+        return [owner];
+      }
+      // 否则添加到已选列表中
+      return [...prev, owner];
+    });
+  };
+
   return (
     <div style={{ 
       padding: '20px 20px 0 20px',
@@ -1137,30 +1201,19 @@ function App() {
             {ownerGPMOptions.map((owner: string) => (
               <button
                 key={owner}
-                onClick={() => {
-                  setSelectedOwnerGPMs((prev: string[]) => {
-                    if (prev.length === 0) {
-                      return [owner];
-                    }
-                    if (prev.includes(owner)) {
-                      const newSelection = prev.filter(o => o !== owner);
-                      return newSelection.length === 0 ? [] : newSelection;
-                    }
-                    return [...prev, owner];
-                  });
-                }}
+                onClick={() => handleOwnerGPMClick(owner)}
                 style={{
                   padding: '8px 12px',
-                  border: isOwnerSelected(owner) ? '2px solid #4CAF50' : '1px solid #d9d9d9',
+                  border: selectedOwnerGPMs.includes(owner) ? '2px solid #4CAF50' : '1px solid #d9d9d9',
                   borderRadius: '4px',
-                  backgroundColor: isOwnerSelected(owner) ? '#f0fff0' : 'white',
+                  backgroundColor: selectedOwnerGPMs.includes(owner) ? '#f0fff0' : 'white',
                   cursor: 'pointer',
                   fontSize: '13px',
                   color: '#666',
                   transition: 'all 0.3s',
                   textAlign: 'left',
                   width: '100%',
-                  fontWeight: isOwnerSelected(owner) ? 600 : 'normal'  // 改为 600 使文字加粗更明显
+                  fontWeight: selectedOwnerGPMs.includes(owner) ? 600 : 'normal'
                 }}
               >
                 {owner}

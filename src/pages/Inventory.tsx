@@ -63,11 +63,12 @@ const Inventory: React.FC<InventoryProps> = ({
   });
   const [showAllColumns, setShowAllColumns] = useState(false);
 
-  // 修改这个数组的顺序
+  // 修改这个数组的顺序，添加 Owner GPM
   const defaultColumns = [
     'Pillar',
     'Category',
     'Item',
+    'Owner GPM',
     'UCM DMS Weightage',
     'Tactic code',
     'Recommendation',
@@ -86,10 +87,13 @@ const Inventory: React.FC<InventoryProps> = ({
   const filteredData = useMemo(() => {
     let filtered = data;
     
-    // 按 Owner GPM 过滤
-    if (selectedOwners.length) {
-      filtered = filtered.filter(item => selectedOwners.includes(item['Owner GPM']));
+    // 如果没有选中任何 Owner GPM，返回空数组
+    if (selectedOwners.length === 0) {
+      return [];
     }
+    
+    // 按 Owner GPM 过滤
+    filtered = filtered.filter(item => selectedOwners.includes(item['Owner GPM']));
     
     // 修改 UCM DMS 过滤逻辑
     if (selectedUCMDMS.length && !selectedUCMDMS.includes('All')) {
@@ -318,9 +322,13 @@ const Inventory: React.FC<InventoryProps> = ({
 
   const toggleOwner = (owner: string) => {
     setSelectedOwners(prev => {
+      // 如果这个 owner 已经被选中，则移除它
       if (prev.includes(owner)) {
-        return prev.filter(o => o !== owner);
+        const newSelected = prev.filter(o => o !== owner);
+        // 如果移除后没有任何选中的 owner，返回空数组
+        return newSelected;
       }
+      // 如果这个 owner 未被选中，则添加它
       return [...prev, owner];
     });
   };
@@ -440,6 +448,21 @@ const Inventory: React.FC<InventoryProps> = ({
     backgroundColor: isSelected ? '#4CAF50' : 'transparent',
     display: 'block'
   });
+
+  // 添加统计计算逻辑
+  const stats = useMemo(() => {
+    const total = filteredData.length;
+    const healthCheck = filteredData.filter(item => item.Category === 'Health check').length;
+    const featureAdoption = filteredData.filter(item => item.Category === 'Feature adoption').length;
+    const tactic = filteredData.filter(item => item.Category === 'Tactic').length;
+
+    return {
+      total,
+      healthCheck,
+      featureAdoption,
+      tactic
+    };
+  }, [filteredData]);
 
   if (loading) {
     return <div>Loading...</div>;
@@ -810,7 +833,10 @@ const Inventory: React.FC<InventoryProps> = ({
               marginBottom: '16px'
             }}>
               <h3 style={{ margin: 0, fontSize: '14px' }}>
-                Details <span style={{ color: '#666' }}>({filteredData.length})</span>
+                Details{' '}
+                <span style={{ color: '#666' }}>
+                  ({stats.total} total: {stats.healthCheck} health checks, {stats.featureAdoption} feature adoptions, {stats.tactic} tactics)
+                </span>
               </h3>
               <button
                 onClick={() => setShowAllColumns(!showAllColumns)}
@@ -854,10 +880,20 @@ const Inventory: React.FC<InventoryProps> = ({
                     backgroundColor: '#f5f5f5',
                     borderBottom: '2px solid #ddd'
                   }}>
-                    {/* 修改这里：使用 defaultColumns 而不是 Object.keys */}
-                    {defaultColumns.map(key => (
-                      <th key={key} style={tableHeaderStyle}>{key}</th>
-                    ))}
+                    {/* 先显示默认列，再显示其他列 */}
+                    {(() => {
+                      if (showAllColumns) {
+                        // 获取所有列，但保持默认列的顺序
+                        const allKeys = Object.keys(filteredData[0] || {});
+                        const otherKeys = allKeys.filter(key => !defaultColumns.includes(key));
+                        return [...defaultColumns, ...otherKeys].map(key => (
+                          <th key={key} style={tableHeaderStyle}>{key}</th>
+                        ));
+                      }
+                      return defaultColumns.map(key => (
+                        <th key={key} style={tableHeaderStyle}>{key}</th>
+                      ));
+                    })()}
                   </tr>
                 </thead>
                 <tbody>
@@ -866,10 +902,19 @@ const Inventory: React.FC<InventoryProps> = ({
                       backgroundColor: index % 2 === 0 ? '#ffffff' : '#fafafa',
                       borderBottom: '1px solid #eee'
                     }}>
-                      {/* 这里也要修改：使用 defaultColumns */}
-                      {defaultColumns.map(key => (
-                        <td key={key} style={tableCellStyle}>{item[key]}</td>
-                      ))}
+                      {/* 数据行也保持相同的列顺序 */}
+                      {(() => {
+                        if (showAllColumns) {
+                          const allKeys = Object.keys(item);
+                          const otherKeys = allKeys.filter(key => !defaultColumns.includes(key));
+                          return [...defaultColumns, ...otherKeys].map(key => (
+                            <td key={key} style={tableCellStyle}>{item[key]}</td>
+                          ));
+                        }
+                        return defaultColumns.map(key => (
+                          <td key={key} style={tableCellStyle}>{item[key]}</td>
+                        ));
+                      })()}
                     </tr>
                   ))}
                 </tbody>
